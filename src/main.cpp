@@ -1,6 +1,8 @@
 #include <algorithm>
 #include <cmath>
 #include <optional>
+#include <random>
+#include <vector>
 
 #include <SFML/Graphics.hpp>
 
@@ -11,11 +13,21 @@ struct GameContext
 	float shipWidth = 16.f;
 	float shipHeight = 20.f;
 	float moveSpeed = 250.f;
-	float earthRadius = 70.f;
+	float earthRadius = 120.f;
+	float scale = 1.f;
+};
+
+struct FlyingObject
+{
+	sf::CircleShape shape;
+	sf::Vector2f velocity;
 };
 
 namespace
 {
+constexpr float shipVisualScale = 0.45f;
+constexpr float spawnIntervalSeconds = 0.35f;
+
 bool IsMoveKeyPressed(sf::Keyboard::Scancode scancode)
 {
 	return sf::Keyboard::isKeyPressed(scancode);
@@ -26,12 +38,12 @@ GameContext CreateGameContext(const sf::VideoMode& desktopMode)
 	GameContext context;
 	context.windowWidth = static_cast<float>(desktopMode.size.x);
 	context.windowHeight = static_cast<float>(desktopMode.size.y);
+	context.scale = std::min(context.windowWidth / 800.f, context.windowHeight / 600.f);
 
-	const float scale = std::min(context.windowWidth / 800.f, context.windowHeight / 600.f);
-	context.shipWidth = 16.f * scale;
-	context.shipHeight = 20.f * scale;
-	context.moveSpeed = 250.f * scale;
-	context.earthRadius = 120.f * scale;
+	context.shipWidth = 16.f * context.scale * shipVisualScale;
+	context.shipHeight = 20.f * context.scale * shipVisualScale;
+	context.moveSpeed = 250.f * context.scale;
+	context.earthRadius = 120.f * context.scale;
 
 	return context;
 }
@@ -59,6 +71,58 @@ sf::CircleShape CreateEarth(const GameContext& context)
 	return earth;
 }
 
+sf::Color RandomDebrisColor(std::mt19937& rng)
+{
+	std::uniform_int_distribution<int> channel(120, 220);
+	return sf::Color(
+		static_cast<std::uint8_t>(channel(rng)),
+		static_cast<std::uint8_t>(channel(rng)),
+		static_cast<std::uint8_t>(channel(rng)));
+}
+
+FlyingObject CreateRandomFlyingObject(const GameContext& context, std::mt19937& rng)
+{
+	std::uniform_real_distribution<float> positionX(0.f, context.windowWidth);
+	std::uniform_real_distribution<float> positionY(0.f, context.windowHeight);
+	std::uniform_real_distribution<float> speed(120.f, 320.f);
+	std::uniform_real_distribution<float> direction(0.f, 6.2831853f);
+	std::uniform_real_distribution<float> radiusDist(6.f, 18.f);
+	std::uniform_int_distribution<int> edgeDist(0, 3);
+
+	const float margin = 30.f * context.scale;
+	const float radius = radiusDist(rng) * context.scale;
+
+	sf::Vector2f position;
+	switch (edgeDist(rng))
+	{
+	case 0:
+		position = sf::Vector2f(positionX(rng), -margin);
+		break;
+	case 1:
+		position = sf::Vector2f(context.windowWidth + margin, positionY(rng));
+		break;
+	case 2:
+		position = sf::Vector2f(positionX(rng), context.windowHeight + margin);
+		break;
+	default:
+		position = sf::Vector2f(-margin, positionY(rng));
+		break;
+	}
+
+	const float objectSpeed = speed(rng) * context.scale;
+	const float angle = direction(rng);
+	const sf::Vector2f velocity(std::cos(angle) * objectSpeed, std::sin(angle) * objectSpeed);
+
+	sf::CircleShape shape(radius);
+	shape.setOrigin(sf::Vector2f(radius, radius));
+	shape.setPosition(position);
+	shape.setFillColor(RandomDebrisColor(rng));
+	shape.setOutlineColor(sf::Color(60, 60, 70));
+	shape.setOutlineThickness(1.f);
+
+	return FlyingObject{ shape, velocity };
+}
+
 void ClampShipPosition(sf::ConvexShape& ship, const GameContext& context)
 {
 	sf::Vector2f position = ship.getPosition();
@@ -77,7 +141,30 @@ void UpdateShipRotation(sf::ConvexShape& ship, sf::Vector2f movement)
 	const float angleDegrees = std::atan2(movement.y, movement.x) * 180.f / 3.14159265f + 90.f;
 	ship.setRotation(sf::degrees(angleDegrees));
 }
+
+void UpdateFlyingObjects(std::vector<FlyingObject>& objects, float deltaTime, const GameContext& context)
+{
+	const float removeMargin = 80.f * context.scale;
+
+	for (auto& object : objects)
+	{
+		object.shape.move(object.velocity * deltaTime);
+	}
+
+	objects.erase(
+		std::remove_if(
+			objects.begin(),
+			objects.end(),
+			[&](const FlyingObject& object) {
+				const sf::Vector2f position = object.shape.getPosition();
+				return position.x < -removeMargin
+					|| position.x > context.windowWidth + removeMargin
+					|| position.y < -removeMargin
+					|| position.y > context.windowHeight + removeMargin;
+			}),
+		objects.end());
 }
+} // namespace
 
 int main()
 {
@@ -94,6 +181,12 @@ int main()
 	spaceship.setPosition(sf::Vector2f(
 		context.windowWidth / 2.f - context.shipWidth / 2.f,
 		context.windowHeight / 2.f - context.shipHeight / 2.f));
+
+	std::mt19937 rng(std::random_device{}());
+	std::vector<FlyingObject> flyingObjects;
+	flyingObjects.reserve(128);
+
+	float spawnTimer = 0.f;
 
 	sf::Clock clock;
 
@@ -197,8 +290,21 @@ int main()
 		ClampShipPosition(spaceship, context);
 		UpdateShipRotation(spaceship, offset);
 
+		spawnTimer += deltaTime;
+		if (spawnTimer >= spawnIntervalSeconds)
+		{
+			spawnTimer = 0.f;
+			flyingObjects.push_back(CreateRandomFlyingObject(context, rng));
+		}
+
+		UpdateFlyingObjects(flyingObjects, deltaTime, context);
+
 		window.clear(sf::Color(10, 10, 25));
 		window.draw(earth);
+		for (const auto& object : flyingObjects)
+		{
+			window.draw(object.shape);
+		}
 		window.draw(spaceship);
 		window.display();
 	}
