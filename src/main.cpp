@@ -23,10 +23,20 @@ struct FlyingObject
 	sf::Vector2f velocity;
 };
 
+struct OrbitSatellite
+{
+	sf::CircleShape shape;
+	float angle = 0.f;
+	float angularSpeed = 0.f;
+	float orbitRadius = 0.f;
+};
+
 namespace
 {
 constexpr float shipVisualScale = 0.45f;
 constexpr float spawnIntervalSeconds = 0.35f;
+constexpr int orbitSatelliteCount = 8;
+constexpr float orbitAngularSpeed = 0.7f;
 
 bool IsMoveKeyPressed(sf::Keyboard::Scancode scancode)
 {
@@ -60,15 +70,64 @@ sf::ConvexShape CreateSpaceship(const GameContext& context)
 	return ship;
 }
 
+sf::Vector2f GetEarthCenter(const GameContext& context)
+{
+	return sf::Vector2f(context.windowWidth / 2.f, context.windowHeight / 2.f);
+}
+
 sf::CircleShape CreateEarth(const GameContext& context)
 {
 	sf::CircleShape earth(context.earthRadius);
 	earth.setOrigin(sf::Vector2f(context.earthRadius, context.earthRadius));
-	earth.setPosition(sf::Vector2f(context.windowWidth / 2.f, context.windowHeight / 2.f));
+	earth.setPosition(GetEarthCenter(context));
 	earth.setFillColor(sf::Color(25, 90, 170));
 	earth.setOutlineColor(sf::Color(45, 150, 70));
 	earth.setOutlineThickness(4.f);
 	return earth;
+}
+
+void SetOrbitSatellitePosition(OrbitSatellite& satellite, sf::Vector2f earthCenter)
+{
+	const float x = earthCenter.x + std::cos(satellite.angle) * satellite.orbitRadius;
+	const float y = earthCenter.y + std::sin(satellite.angle) * satellite.orbitRadius;
+	satellite.shape.setPosition(sf::Vector2f(x, y));
+}
+
+std::vector<OrbitSatellite> CreateOrbitSatellites(const GameContext& context)
+{
+	const float satelliteRadius = 6.f * context.scale;
+	const float orbitRadius = context.earthRadius + 30.f * context.scale;
+	const sf::Vector2f earthCenter = GetEarthCenter(context);
+	const float angleStep = 6.2831853f / static_cast<float>(orbitSatelliteCount);
+
+	std::vector<OrbitSatellite> satellites;
+	satellites.reserve(orbitSatelliteCount);
+
+	for (int i = 0; i < orbitSatelliteCount; ++i)
+	{
+		OrbitSatellite satellite;
+		satellite.angle = angleStep * static_cast<float>(i);
+		satellite.angularSpeed = orbitAngularSpeed;
+		satellite.orbitRadius = orbitRadius;
+		satellite.shape = sf::CircleShape(satelliteRadius);
+		satellite.shape.setOrigin(sf::Vector2f(satelliteRadius, satelliteRadius));
+		satellite.shape.setFillColor(sf::Color(200, 200, 210));
+		satellite.shape.setOutlineColor(sf::Color(140, 180, 220));
+		satellite.shape.setOutlineThickness(1.f);
+		SetOrbitSatellitePosition(satellite, earthCenter);
+		satellites.push_back(satellite);
+	}
+
+	return satellites;
+}
+
+void UpdateOrbitSatellites(std::vector<OrbitSatellite>& satellites, float deltaTime, sf::Vector2f earthCenter)
+{
+	for (auto& satellite : satellites)
+	{
+		satellite.angle += satellite.angularSpeed * deltaTime;
+		SetOrbitSatellitePosition(satellite, earthCenter);
+	}
 }
 
 sf::Color RandomDebrisColor(std::mt19937& rng)
@@ -164,7 +223,7 @@ void UpdateFlyingObjects(std::vector<FlyingObject>& objects, float deltaTime, co
 			}),
 		objects.end());
 }
-} // namespace
+}
 
 int main()
 {
@@ -176,7 +235,10 @@ int main()
 	(void)window.setActive(true);
 	window.requestFocus();
 
+	const sf::Vector2f earthCenter = GetEarthCenter(context);
+
 	sf::CircleShape earth = CreateEarth(context);
+	std::vector<OrbitSatellite> orbitSatellites = CreateOrbitSatellites(context);
 	sf::ConvexShape spaceship = CreateSpaceship(context);
 	spaceship.setPosition(sf::Vector2f(
 		context.windowWidth / 2.f - context.shipWidth / 2.f,
@@ -298,9 +360,14 @@ int main()
 		}
 
 		UpdateFlyingObjects(flyingObjects, deltaTime, context);
+		UpdateOrbitSatellites(orbitSatellites, deltaTime, earthCenter);
 
 		window.clear(sf::Color(10, 10, 25));
 		window.draw(earth);
+		for (const auto& satellite : orbitSatellites)
+		{
+			window.draw(satellite.shape);
+		}
 		for (const auto& object : flyingObjects)
 		{
 			window.draw(object.shape);
