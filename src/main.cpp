@@ -13,11 +13,12 @@ struct GameContext
 	float shipWidth = 16.f;
 	float shipHeight = 20.f;
 	float moveSpeed = 250.f;
-	float earthRadius = 120.f;
+	float earthRadius = 80.f;
 	float scale = 1.f;
+	float bulletSpeed = 500.f;
 };
 
-struct FlyingObject
+struct Asteroid
 {
 	sf::CircleShape shape;
 	sf::Vector2f velocity;
@@ -29,14 +30,45 @@ struct OrbitSatellite
 	float angle = 0.f;
 	float angularSpeed = 0.f;
 	float orbitRadius = 0.f;
+	int hp = 2;
+	int maxHp = 2;
+};
+
+struct NeutralShip
+{
+	sf::ConvexShape shape;
+	sf::Vector2f velocity;
+};
+
+struct Bullet
+{
+	sf::RectangleShape shape;
+	sf::Vector2f velocity;
 };
 
 namespace
 {
 constexpr float shipVisualScale = 0.45f;
-constexpr float spawnIntervalSeconds = 0.35f;
+constexpr int minAsteroidCount = 10;
+constexpr int maxAsteroidCount = 15;
 constexpr int orbitSatelliteCount = 8;
 constexpr float orbitAngularSpeed = 0.7f;
+constexpr int neutralShipCount = 4;
+constexpr float neutralShipSizeMultiplier = 5.f;
+constexpr float neutralMoveSpeed = 5.f;
+
+constexpr sf::Color kColorPlayerShipFill(50, 120, 230);
+constexpr sf::Color kColorPlayerShipOutline(120, 180, 255);
+constexpr sf::Color kColorSatelliteFill(55, 95, 220);
+constexpr sf::Color kColorSatelliteOutline(100, 150, 255);
+constexpr sf::Color kColorAsteroidFill(139, 90, 43);
+constexpr sf::Color kColorAsteroidOutline(100, 65, 30);
+constexpr sf::Color kColorNeutralFill(35, 130, 55);
+constexpr sf::Color kColorNeutralOutline(20, 90, 40);
+constexpr sf::Color kColorBullet(255, 220, 50);
+constexpr sf::Color kColorHpBackground(90, 20, 20);
+constexpr sf::Color kColorHpForeground(0, 200, 0);
+constexpr sf::Color kColorHpDamaged(200, 40, 40);
 
 bool IsMoveKeyPressed(sf::Keyboard::Scancode scancode)
 {
@@ -53,26 +85,39 @@ GameContext CreateGameContext(const sf::VideoMode& desktopMode)
 	context.shipWidth = 16.f * context.scale * shipVisualScale;
 	context.shipHeight = 20.f * context.scale * shipVisualScale;
 	context.moveSpeed = 250.f * context.scale;
-	context.earthRadius = 120.f * context.scale;
+	context.earthRadius = 80.f * context.scale;
+	context.bulletSpeed = 500.f * context.scale;
 
 	return context;
-}
-
-sf::ConvexShape CreateSpaceship(const GameContext& context)
-{
-	sf::ConvexShape ship(3);
-	ship.setPoint(0, sf::Vector2f(context.shipWidth / 2.f, 0.f));
-	ship.setPoint(1, sf::Vector2f(0.f, context.shipHeight));
-	ship.setPoint(2, sf::Vector2f(context.shipWidth, context.shipHeight));
-	ship.setFillColor(sf::Color(220, 220, 230));
-	ship.setOutlineColor(sf::Color(80, 200, 255));
-	ship.setOutlineThickness(1.f);
-	return ship;
 }
 
 sf::Vector2f GetEarthCenter(const GameContext& context)
 {
 	return sf::Vector2f(context.windowWidth / 2.f, context.windowHeight / 2.f);
+}
+
+float GetSatelliteRadius(const GameContext& context)
+{
+	return 5.f * context.scale;
+}
+
+sf::Vector2f GetNeutralShipSize(const GameContext& context)
+{
+	return sf::Vector2f(
+		context.shipWidth * neutralShipSizeMultiplier,
+		context.shipHeight * neutralShipSizeMultiplier);
+}
+
+sf::ConvexShape CreatePlayerShip(const GameContext& context)
+{
+	sf::ConvexShape ship(3);
+	ship.setPoint(0, sf::Vector2f(context.shipWidth / 2.f, 0.f));
+	ship.setPoint(1, sf::Vector2f(0.f, context.shipHeight));
+	ship.setPoint(2, sf::Vector2f(context.shipWidth, context.shipHeight));
+	ship.setFillColor(kColorPlayerShipFill);
+	ship.setOutlineColor(kColorPlayerShipOutline);
+	ship.setOutlineThickness(1.f);
+	return ship;
 }
 
 sf::CircleShape CreateEarth(const GameContext& context)
@@ -95,8 +140,8 @@ void SetOrbitSatellitePosition(OrbitSatellite& satellite, sf::Vector2f earthCent
 
 std::vector<OrbitSatellite> CreateOrbitSatellites(const GameContext& context)
 {
-	const float satelliteRadius = 6.f * context.scale;
-	const float orbitRadius = context.earthRadius + 30.f * context.scale;
+	const float satelliteRadius = GetSatelliteRadius(context);
+	const float orbitRadius = context.earthRadius + 24.f * context.scale;
 	const sf::Vector2f earthCenter = GetEarthCenter(context);
 	const float angleStep = 6.2831853f / static_cast<float>(orbitSatelliteCount);
 
@@ -109,10 +154,12 @@ std::vector<OrbitSatellite> CreateOrbitSatellites(const GameContext& context)
 		satellite.angle = angleStep * static_cast<float>(i);
 		satellite.angularSpeed = orbitAngularSpeed;
 		satellite.orbitRadius = orbitRadius;
+		satellite.hp = 2;
+		satellite.maxHp = 2;
 		satellite.shape = sf::CircleShape(satelliteRadius);
 		satellite.shape.setOrigin(sf::Vector2f(satelliteRadius, satelliteRadius));
-		satellite.shape.setFillColor(sf::Color(200, 200, 210));
-		satellite.shape.setOutlineColor(sf::Color(140, 180, 220));
+		satellite.shape.setFillColor(kColorSatelliteFill);
+		satellite.shape.setOutlineColor(kColorSatelliteOutline);
 		satellite.shape.setOutlineThickness(1.f);
 		SetOrbitSatellitePosition(satellite, earthCenter);
 		satellites.push_back(satellite);
@@ -121,73 +168,275 @@ std::vector<OrbitSatellite> CreateOrbitSatellites(const GameContext& context)
 	return satellites;
 }
 
-void UpdateOrbitSatellites(std::vector<OrbitSatellite>& satellites, float deltaTime, sf::Vector2f earthCenter)
+void ClampCircleToScreen(sf::CircleShape& circle, const GameContext& context)
+{
+	const float radius = circle.getRadius();
+	sf::Vector2f position = circle.getPosition();
+	position.x = std::clamp(position.x, radius, context.windowWidth - radius);
+	position.y = std::clamp(position.y, radius, context.windowHeight - radius);
+	circle.setPosition(position);
+}
+
+void UpdateOrbitSatellites(
+	std::vector<OrbitSatellite>& satellites,
+	float deltaTime,
+	sf::Vector2f earthCenter,
+	const GameContext& context)
 {
 	for (auto& satellite : satellites)
 	{
 		satellite.angle += satellite.angularSpeed * deltaTime;
 		SetOrbitSatellitePosition(satellite, earthCenter);
+		ClampCircleToScreen(satellite.shape, context);
 	}
 }
 
-sf::Color RandomDebrisColor(std::mt19937& rng)
+void DrawSatelliteHpBar(sf::RenderWindow& window, const OrbitSatellite& satellite, const GameContext& context)
 {
-	std::uniform_int_distribution<int> channel(120, 220);
-	return sf::Color(
-		static_cast<std::uint8_t>(channel(rng)),
-		static_cast<std::uint8_t>(channel(rng)),
-		static_cast<std::uint8_t>(channel(rng)));
+	const float radius = satellite.shape.getRadius();
+	const sf::Vector2f center = satellite.shape.getPosition();
+	const float barWidth = 18.f * context.scale;
+	const float barHeight = 3.f * context.scale;
+	const sf::Vector2f barPosition(center.x - barWidth / 2.f, center.y - radius - 7.f * context.scale);
+
+	sf::RectangleShape background(sf::Vector2f(barWidth, barHeight));
+	background.setPosition(barPosition);
+	background.setFillColor(kColorHpBackground);
+
+	const float hpFraction = static_cast<float>(satellite.hp) / static_cast<float>(satellite.maxHp);
+	const float foregroundWidth = barWidth * hpFraction;
+
+	sf::RectangleShape foreground(sf::Vector2f(foregroundWidth, barHeight));
+	foreground.setPosition(barPosition);
+	if (satellite.hp == satellite.maxHp)
+	{
+		foreground.setFillColor(kColorHpForeground);
+	}
+	else if (satellite.hp > 0)
+	{
+		foreground.setFillColor(kColorHpDamaged);
+	}
+
+	window.draw(background);
+	if (foregroundWidth > 0.f)
+	{
+		window.draw(foreground);
+	}
 }
 
-FlyingObject CreateRandomFlyingObject(const GameContext& context, std::mt19937& rng)
+sf::Vector2f GetShipForwardDirection(const sf::ConvexShape& ship, const GameContext& context)
+{
+	const sf::Transform transform = ship.getTransform();
+	const sf::Vector2f nose = transform.transformPoint(sf::Vector2f(context.shipWidth / 2.f, 0.f));
+	const sf::Vector2f body = transform.transformPoint(sf::Vector2f(context.shipWidth / 2.f, context.shipHeight * 0.5f));
+	sf::Vector2f direction = nose - body;
+	const float length = std::sqrt(direction.x * direction.x + direction.y * direction.y);
+	if (length > 0.0001f)
+	{
+		direction /= length;
+	}
+	return direction;
+}
+
+sf::Vector2f GetShipNosePosition(const sf::ConvexShape& ship, const GameContext& context)
+{
+	return ship.getTransform().transformPoint(sf::Vector2f(context.shipWidth / 2.f, 0.f));
+}
+
+Bullet CreateBulletFromShip(const sf::ConvexShape& ship, const GameContext& context)
+{
+	const sf::Vector2f direction = GetShipForwardDirection(ship, context);
+	const sf::Vector2f nosePosition = GetShipNosePosition(ship, context);
+
+	const float bulletWidth = 2.f * context.scale;
+	const float bulletLength = 5.f * context.scale;
+
+	sf::RectangleShape shape(sf::Vector2f(bulletWidth, bulletLength));
+	shape.setOrigin(sf::Vector2f(bulletWidth / 2.f, bulletLength / 2.f));
+	shape.setPosition(nosePosition + direction * (bulletLength * 0.6f));
+	shape.setFillColor(kColorBullet);
+
+	const float angleDegrees = std::atan2(direction.y, direction.x) * 180.f / 3.14159265f + 90.f;
+	shape.setRotation(sf::degrees(angleDegrees));
+
+	return Bullet{ shape, direction * context.bulletSpeed };
+}
+
+sf::Vector2f CreateOffScreenSpawnPosition(
+	const GameContext& context,
+	float spawnMargin,
+	std::mt19937& rng)
 {
 	std::uniform_real_distribution<float> positionX(0.f, context.windowWidth);
 	std::uniform_real_distribution<float> positionY(0.f, context.windowHeight);
-	std::uniform_real_distribution<float> speed(120.f, 320.f);
-	std::uniform_real_distribution<float> direction(0.f, 6.2831853f);
-	std::uniform_real_distribution<float> radiusDist(6.f, 18.f);
 	std::uniform_int_distribution<int> edgeDist(0, 3);
 
-	const float margin = 30.f * context.scale;
-	const float radius = radiusDist(rng) * context.scale;
-
-	sf::Vector2f position;
 	switch (edgeDist(rng))
 	{
 	case 0:
-		position = sf::Vector2f(positionX(rng), -margin);
-		break;
+		return sf::Vector2f(positionX(rng), -spawnMargin);
 	case 1:
-		position = sf::Vector2f(context.windowWidth + margin, positionY(rng));
-		break;
+		return sf::Vector2f(context.windowWidth + spawnMargin, positionY(rng));
 	case 2:
-		position = sf::Vector2f(positionX(rng), context.windowHeight + margin);
-		break;
+		return sf::Vector2f(positionX(rng), context.windowHeight + spawnMargin);
 	default:
-		position = sf::Vector2f(-margin, positionY(rng));
-		break;
+		return sf::Vector2f(-spawnMargin, positionY(rng));
 	}
+}
 
-	const float objectSpeed = speed(rng) * context.scale;
+Asteroid CreateRandomAsteroid(const GameContext& context, std::mt19937& rng)
+{
+	const float radius = GetSatelliteRadius(context) * 2.f;
+	const float spawnMargin = radius + 30.f * context.scale;
+
+	std::uniform_real_distribution<float> speed(30.f, 60.f);
+	std::uniform_real_distribution<float> direction(0.f, 6.2831853f);
+
+	const sf::Vector2f position = CreateOffScreenSpawnPosition(context, spawnMargin, rng);
+	const float asteroidSpeed = speed(rng) * context.scale;
 	const float angle = direction(rng);
-	const sf::Vector2f velocity(std::cos(angle) * objectSpeed, std::sin(angle) * objectSpeed);
+	const sf::Vector2f velocity(std::cos(angle) * asteroidSpeed, std::sin(angle) * asteroidSpeed);
 
 	sf::CircleShape shape(radius);
 	shape.setOrigin(sf::Vector2f(radius, radius));
 	shape.setPosition(position);
-	shape.setFillColor(RandomDebrisColor(rng));
-	shape.setOutlineColor(sf::Color(60, 60, 70));
+	shape.setFillColor(kColorAsteroidFill);
+	shape.setOutlineColor(kColorAsteroidOutline);
 	shape.setOutlineThickness(1.f);
 
-	return FlyingObject{ shape, velocity };
+	return Asteroid{ shape, velocity };
 }
 
-void ClampShipPosition(sf::ConvexShape& ship, const GameContext& context)
+std::vector<Asteroid> CreateInitialAsteroids(const GameContext& context, std::mt19937& rng)
 {
-	sf::Vector2f position = ship.getPosition();
-	position.x = std::clamp(position.x, 0.f, context.windowWidth - context.shipWidth);
-	position.y = std::clamp(position.y, 0.f, context.windowHeight - context.shipHeight);
-	ship.setPosition(position);
+	std::uniform_int_distribution<int> countDist(minAsteroidCount, maxAsteroidCount);
+	const int asteroidCount = countDist(rng);
+
+	std::vector<Asteroid> asteroids;
+	asteroids.reserve(static_cast<std::size_t>(asteroidCount));
+	for (int i = 0; i < asteroidCount; ++i)
+	{
+		asteroids.push_back(CreateRandomAsteroid(context, rng));
+	}
+	return asteroids;
+}
+
+sf::ConvexShape CreateNeutralTriangleShape(const GameContext& context)
+{
+	const sf::Vector2f size = GetNeutralShipSize(context);
+	const float width = size.x;
+	const float height = size.y;
+
+	sf::ConvexShape shape(3);
+	shape.setPoint(0, sf::Vector2f(width / 2.f, 0.f));
+	shape.setPoint(1, sf::Vector2f(0.f, height));
+	shape.setPoint(2, sf::Vector2f(width, height));
+	shape.setOrigin(sf::Vector2f(width / 2.f, height / 2.f));
+	shape.setFillColor(kColorNeutralFill);
+	shape.setOutlineColor(kColorNeutralOutline);
+	shape.setOutlineThickness(1.f);
+	return shape;
+}
+
+sf::Vector2f CreateInboundVelocity(sf::Vector2f spawnPosition, const GameContext& context, float speed, std::mt19937& rng)
+{
+	const sf::Vector2f screenCenter(context.windowWidth / 2.f, context.windowHeight / 2.f);
+	sf::Vector2f direction = screenCenter - spawnPosition;
+	const float length = std::sqrt(direction.x * direction.x + direction.y * direction.y);
+	if (length > 0.0001f)
+	{
+		direction /= length;
+	}
+
+	std::uniform_real_distribution<float> angleOffset(-0.45f, 0.45f);
+	const float offsetAngle = angleOffset(rng);
+	const float cosA = std::cos(offsetAngle);
+	const float sinA = std::sin(offsetAngle);
+	const sf::Vector2f rotated(
+		direction.x * cosA - direction.y * sinA,
+		direction.x * sinA + direction.y * cosA);
+
+	return rotated * speed;
+}
+
+bool IsFullyOutsideScreen(const sf::FloatRect& bounds, const GameContext& context, float margin)
+{
+	return bounds.position.x + bounds.size.x < -margin
+		|| bounds.position.x > context.windowWidth + margin
+		|| bounds.position.y + bounds.size.y < -margin
+		|| bounds.position.y > context.windowHeight + margin;
+}
+
+NeutralShip CreateRandomNeutralShip(const GameContext& context, std::mt19937& rng)
+{
+	const sf::Vector2f shipSize = GetNeutralShipSize(context);
+	const float spawnMargin = std::max(shipSize.x, shipSize.y) + 40.f * context.scale;
+
+	const sf::Vector2f position = CreateOffScreenSpawnPosition(context, spawnMargin, rng);
+	const float speed = neutralMoveSpeed * context.scale;
+	const sf::Vector2f velocity = CreateInboundVelocity(position, context, speed, rng);
+
+	sf::ConvexShape shape = CreateNeutralTriangleShape(context);
+	shape.setPosition(position);
+
+	const float angleDegrees = std::atan2(velocity.y, velocity.x) * 180.f / 3.14159265f + 90.f;
+	shape.setRotation(sf::degrees(angleDegrees));
+
+	return NeutralShip{ shape, velocity };
+}
+
+std::vector<NeutralShip> CreateNeutralShips(const GameContext& context, std::mt19937& rng)
+{
+	std::vector<NeutralShip> neutrals;
+	neutrals.reserve(neutralShipCount);
+	for (int i = 0; i < neutralShipCount; ++i)
+	{
+		neutrals.push_back(CreateRandomNeutralShip(context, rng));
+	}
+	return neutrals;
+}
+
+void KeepInsideScreen(sf::Shape& shape, const GameContext& context, sf::Vector2f* velocity)
+{
+	sf::FloatRect bounds = shape.getGlobalBounds();
+
+	if (bounds.position.x < 0.f)
+	{
+		shape.move(sf::Vector2f(-bounds.position.x, 0.f));
+		if (velocity != nullptr)
+		{
+			velocity->x = std::abs(velocity->x);
+		}
+	}
+	else if (bounds.position.x + bounds.size.x > context.windowWidth)
+	{
+		const float offset = context.windowWidth - (bounds.position.x + bounds.size.x);
+		shape.move(sf::Vector2f(offset, 0.f));
+		if (velocity != nullptr)
+		{
+			velocity->x = -std::abs(velocity->x);
+		}
+	}
+
+	bounds = shape.getGlobalBounds();
+
+	if (bounds.position.y < 0.f)
+	{
+		shape.move(sf::Vector2f(0.f, -bounds.position.y));
+		if (velocity != nullptr)
+		{
+			velocity->y = std::abs(velocity->y);
+		}
+	}
+	else if (bounds.position.y + bounds.size.y > context.windowHeight)
+	{
+		const float offset = context.windowHeight - (bounds.position.y + bounds.size.y);
+		shape.move(sf::Vector2f(0.f, offset));
+		if (velocity != nullptr)
+		{
+			velocity->y = -std::abs(velocity->y);
+		}
+	}
 }
 
 void UpdateShipRotation(sf::ConvexShape& ship, sf::Vector2f movement)
@@ -201,29 +450,62 @@ void UpdateShipRotation(sf::ConvexShape& ship, sf::Vector2f movement)
 	ship.setRotation(sf::degrees(angleDegrees));
 }
 
-void UpdateFlyingObjects(std::vector<FlyingObject>& objects, float deltaTime, const GameContext& context)
+void UpdateAsteroids(std::vector<Asteroid>& asteroids, float deltaTime, const GameContext& context)
+{
+	for (auto& asteroid : asteroids)
+	{
+		asteroid.shape.move(asteroid.velocity * deltaTime);
+		KeepInsideScreen(asteroid.shape, context, &asteroid.velocity);
+	}
+}
+
+void UpdateNeutralShips(std::vector<NeutralShip>& neutrals, float deltaTime, const GameContext& context, std::mt19937& rng)
 {
 	const float removeMargin = 80.f * context.scale;
 
-	for (auto& object : objects)
+	for (auto& neutral : neutrals)
 	{
-		object.shape.move(object.velocity * deltaTime);
+		neutral.shape.move(neutral.velocity * deltaTime);
 	}
 
-	objects.erase(
+	neutrals.erase(
 		std::remove_if(
-			objects.begin(),
-			objects.end(),
-			[&](const FlyingObject& object) {
-				const sf::Vector2f position = object.shape.getPosition();
+			neutrals.begin(),
+			neutrals.end(),
+			[&](const NeutralShip& neutral) {
+				return IsFullyOutsideScreen(neutral.shape.getGlobalBounds(), context, removeMargin);
+			}),
+		neutrals.end());
+
+	while (static_cast<int>(neutrals.size()) < neutralShipCount)
+	{
+		neutrals.push_back(CreateRandomNeutralShip(context, rng));
+	}
+}
+
+void UpdateBullets(std::vector<Bullet>& bullets, float deltaTime, const GameContext& context)
+{
+	const float removeMargin = 40.f * context.scale;
+
+	for (auto& bullet : bullets)
+	{
+		bullet.shape.move(bullet.velocity * deltaTime);
+	}
+
+	bullets.erase(
+		std::remove_if(
+			bullets.begin(),
+			bullets.end(),
+			[&](const Bullet& bullet) {
+				const sf::Vector2f position = bullet.shape.getPosition();
 				return position.x < -removeMargin
 					|| position.x > context.windowWidth + removeMargin
 					|| position.y < -removeMargin
 					|| position.y > context.windowHeight + removeMargin;
 			}),
-		objects.end());
+		bullets.end());
 }
-}
+} // namespace
 
 int main()
 {
@@ -239,16 +521,16 @@ int main()
 
 	sf::CircleShape earth = CreateEarth(context);
 	std::vector<OrbitSatellite> orbitSatellites = CreateOrbitSatellites(context);
-	sf::ConvexShape spaceship = CreateSpaceship(context);
-	spaceship.setPosition(sf::Vector2f(
+	sf::ConvexShape playerShip = CreatePlayerShip(context);
+	playerShip.setPosition(sf::Vector2f(
 		context.windowWidth / 2.f - context.shipWidth / 2.f,
 		context.windowHeight / 2.f - context.shipHeight / 2.f));
 
 	std::mt19937 rng(std::random_device{}());
-	std::vector<FlyingObject> flyingObjects;
-	flyingObjects.reserve(128);
-
-	float spawnTimer = 0.f;
+	std::vector<Asteroid> asteroids = CreateInitialAsteroids(context, rng);
+	std::vector<NeutralShip> neutralShips = CreateNeutralShips(context, rng);
+	std::vector<Bullet> bullets;
+	bullets.reserve(64);
 
 	sf::Clock clock;
 
@@ -288,6 +570,10 @@ int main()
 				if (keyPressed->code == sf::Keyboard::Key::Escape)
 				{
 					window.close();
+				}
+				else if (keyPressed->code == sf::Keyboard::Key::Space)
+				{
+					bullets.push_back(CreateBulletFromShip(playerShip, context));
 				}
 
 				switch (keyPressed->scancode)
@@ -348,31 +634,35 @@ int main()
 			offset.y += context.moveSpeed * deltaTime;
 		}
 
-		spaceship.move(offset);
-		ClampShipPosition(spaceship, context);
-		UpdateShipRotation(spaceship, offset);
+		playerShip.move(offset);
+		KeepInsideScreen(playerShip, context, nullptr);
+		UpdateShipRotation(playerShip, offset);
 
-		spawnTimer += deltaTime;
-		if (spawnTimer >= spawnIntervalSeconds)
-		{
-			spawnTimer = 0.f;
-			flyingObjects.push_back(CreateRandomFlyingObject(context, rng));
-		}
-
-		UpdateFlyingObjects(flyingObjects, deltaTime, context);
-		UpdateOrbitSatellites(orbitSatellites, deltaTime, earthCenter);
+		UpdateAsteroids(asteroids, deltaTime, context);
+		UpdateNeutralShips(neutralShips, deltaTime, context, rng);
+		UpdateBullets(bullets, deltaTime, context);
+		UpdateOrbitSatellites(orbitSatellites, deltaTime, earthCenter, context);
 
 		window.clear(sf::Color(10, 10, 25));
 		window.draw(earth);
 		for (const auto& satellite : orbitSatellites)
 		{
 			window.draw(satellite.shape);
+			DrawSatelliteHpBar(window, satellite, context);
 		}
-		for (const auto& object : flyingObjects)
+		for (const auto& asteroid : asteroids)
 		{
-			window.draw(object.shape);
+			window.draw(asteroid.shape);
 		}
-		window.draw(spaceship);
+		for (const auto& neutral : neutralShips)
+		{
+			window.draw(neutral.shape);
+		}
+		for (const auto& bullet : bullets)
+		{
+			window.draw(bullet.shape);
+		}
+		window.draw(playerShip);
 		window.display();
 	}
 
