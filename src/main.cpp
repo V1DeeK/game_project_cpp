@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <optional>
 #include <random>
 #include <vector>
@@ -49,6 +50,15 @@ struct Bullet
 	sf::Vector2f velocity;
 };
 
+struct EnemyShip
+{
+	sf::ConvexShape shape;
+	sf::Vector2f targetPosition;
+	int targetRingIndex = 0;
+	int targetPointIndex = 0;
+	float fireCooldown = 0.f;
+};
+
 namespace
 {
 constexpr float shipVisualScale = 0.45f;
@@ -58,10 +68,20 @@ constexpr int baseAsteroidHitPoints = 2;
 constexpr float asteroidMassRetention = 0.9f;
 constexpr float asteroidSpeedAfterMerge = 0.5f;
 constexpr int orbitSatelliteCount = 8;
-constexpr float orbitAngularSpeed = 0.7f;
+constexpr int satelliteHitPoints = 3;
+constexpr int firingPointCount = 36;
+constexpr int firingRingCount = 2;
+constexpr float firingRing2AngleOffsetDegrees = 5.f;
+constexpr float firingRingSpacing = 55.f;
+constexpr float orbitAngularSpeed = 1.5f;
 constexpr int neutralShipCount = 4;
-constexpr float neutralShipSizeMultiplier = 5.f;
-constexpr float neutralMoveSpeed = 7.5f;
+constexpr float neutralShipSizeMultiplier = 2.5f;
+constexpr float neutralMoveSpeed = 10.f;
+constexpr int enemySpawnCount = 4;
+constexpr int targetAsteroidCount = (minAsteroidCount + maxAsteroidCount) / 2;
+constexpr float firingRingOffset = 55.f;
+constexpr float enemyMoveSpeed = 45.f;
+constexpr float enemyFireInterval = 2.f;
 
 constexpr sf::Color kColorPlayerShipFill(50, 120, 230);
 constexpr sf::Color kColorPlayerShipOutline(120, 180, 255);
@@ -71,6 +91,8 @@ constexpr sf::Color kColorAsteroidFill(139, 90, 43);
 constexpr sf::Color kColorAsteroidOutline(100, 65, 30);
 constexpr sf::Color kColorNeutralFill(35, 130, 55);
 constexpr sf::Color kColorNeutralOutline(20, 90, 40);
+constexpr sf::Color kColorEnemyFill(200, 45, 45);
+constexpr sf::Color kColorEnemyOutline(255, 90, 90);
 constexpr sf::Color kColorBullet(255, 220, 50);
 constexpr sf::Color kColorHpBackground(90, 20, 20);
 constexpr sf::Color kColorHpForeground(0, 200, 0);
@@ -114,12 +136,274 @@ sf::Vector2f GetNeutralShipSize(const GameContext& context)
 		context.shipHeight * neutralShipSizeMultiplier);
 }
 
+float GetSatelliteOrbitRadius(const GameContext& context)
+{
+	return context.earthRadius + 24.f * context.scale;
+}
+
+float GetFiringRingRadius(const GameContext& context, int ringIndex)
+{
+	return GetSatelliteOrbitRadius(context)
+		+ (firingRingOffset + firingRingSpacing * static_cast<float>(ringIndex)) * context.scale;
+}
+
+sf::Vector2f GetFiringPointPosition(
+	sf::Vector2f earthCenter,
+	const GameContext& context,
+	int ringIndex,
+	int pointIndex)
+{
+	const float firingRadius = GetFiringRingRadius(context, ringIndex);
+	const float angleStep = 6.2831853f / static_cast<float>(firingPointCount);
+	const float ringAngleOffset = firingRing2AngleOffsetDegrees * 3.14159265f / 180.f
+		* static_cast<float>(ringIndex);
+	const float angle = angleStep * static_cast<float>(pointIndex) + ringAngleOffset;
+	return sf::Vector2f(
+		earthCenter.x + std::cos(angle) * firingRadius,
+		earthCenter.y + std::sin(angle) * firingRadius);
+}
+
+bool IsFiringSlotOccupied(int ringIndex, int pointIndex, const std::vector<EnemyShip>& enemies)
+{
+	for (const auto& enemy : enemies)
+	{
+		if (enemy.targetRingIndex == ringIndex && enemy.targetPointIndex == pointIndex)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+bool HasFreeFiringSlotOnRing(int ringIndex, const std::vector<EnemyShip>& enemies)
+{
+	for (int pointIndex = 0; pointIndex < firingPointCount; ++pointIndex)
+	{
+		if (!IsFiringSlotOccupied(ringIndex, pointIndex, enemies))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+struct FiringSlotAssignment
+{
+	int ringIndex = 0;
+	int pointIndex = 0;
+};
+
+FiringSlotAssignment FindNearestFiringSlot(
+	sf::Vector2f spawnPosition,
+	sf::Vector2f earthCenter,
+	const GameContext& context,
+	const std::vector<EnemyShip>& enemies)
+{
+	FiringSlotAssignment result;
+	int searchRingCount = firingRingCount;
+
+	for (int ringIndex = 0; ringIndex < firingRingCount; ++ringIndex)
+	{
+		if (HasFreeFiringSlotOnRing(ringIndex, enemies))
+		{
+			searchRingCount = ringIndex + 1;
+			break;
+		}
+	}
+
+	int bestFreeRing = -1;
+	int bestFreePoint = 0;
+	float bestFreeDistance = std::numeric_limits<float>::max();
+	int bestAnyRing = 0;
+	int bestAnyPoint = 0;
+	float bestAnyDistance = std::numeric_limits<float>::max();
+
+	for (int ringIndex = 0; ringIndex < searchRingCount; ++ringIndex)
+	{
+		for (int pointIndex = 0; pointIndex < firingPointCount; ++pointIndex)
+		{
+			const sf::Vector2f slotPosition = GetFiringPointPosition(earthCenter, context, ringIndex, pointIndex);
+			const sf::Vector2f delta = slotPosition - spawnPosition;
+			const float distance = delta.x * delta.x + delta.y * delta.y;
+
+			if (distance < bestAnyDistance)
+			{
+				bestAnyDistance = distance;
+				bestAnyRing = ringIndex;
+				bestAnyPoint = pointIndex;
+			}
+
+			if (!IsFiringSlotOccupied(ringIndex, pointIndex, enemies) && distance < bestFreeDistance)
+			{
+				bestFreeDistance = distance;
+				bestFreeRing = ringIndex;
+				bestFreePoint = pointIndex;
+			}
+		}
+	}
+
+	if (bestFreeRing >= 0)
+	{
+		result.ringIndex = bestFreeRing;
+		result.pointIndex = bestFreePoint;
+	}
+	else
+	{
+		result.ringIndex = bestAnyRing;
+		result.pointIndex = bestAnyPoint;
+	}
+
+	return result;
+}
+
+void RotateShipTowardPoint(sf::ConvexShape& ship, sf::Vector2f shipCenter, sf::Vector2f targetPoint)
+{
+	sf::Vector2f direction = targetPoint - shipCenter;
+	const float length = std::sqrt(direction.x * direction.x + direction.y * direction.y);
+	if (length <= 0.0001f)
+	{
+		return;
+	}
+
+	const float angleDegrees = std::atan2(direction.y, direction.x) * 180.f / 3.14159265f + 90.f;
+	ship.setRotation(sf::degrees(angleDegrees));
+}
+
+sf::ConvexShape CreateEnemyShip(const GameContext& context)
+{
+	sf::ConvexShape ship(3);
+	ship.setPoint(0, sf::Vector2f(context.shipWidth / 2.f, 0.f));
+	ship.setPoint(1, sf::Vector2f(0.f, context.shipHeight));
+	ship.setPoint(2, sf::Vector2f(context.shipWidth, context.shipHeight));
+	ship.setOrigin(sf::Vector2f(context.shipWidth / 2.f, context.shipHeight / 2.f));
+	ship.setFillColor(kColorEnemyFill);
+	ship.setOutlineColor(kColorEnemyOutline);
+	ship.setOutlineThickness(1.f);
+	return ship;
+}
+
+sf::Vector2f CreateSpawnPositionFromEdge(int edge, const GameContext& context, float spawnMargin, std::mt19937& rng)
+{
+	std::uniform_real_distribution<float> positionX(0.f, context.windowWidth);
+	std::uniform_real_distribution<float> positionY(0.f, context.windowHeight);
+
+	switch (edge)
+	{
+	case 0:
+		return sf::Vector2f(positionX(rng), -spawnMargin);
+	case 1:
+		return sf::Vector2f(context.windowWidth + spawnMargin, positionY(rng));
+	case 2:
+		return sf::Vector2f(positionX(rng), context.windowHeight + spawnMargin);
+	default:
+		return sf::Vector2f(-spawnMargin, positionY(rng));
+	}
+}
+
+void SpawnEnemiesFromAllSides(
+	std::vector<EnemyShip>& enemies,
+	const GameContext& context,
+	sf::Vector2f earthCenter,
+	std::mt19937& rng)
+{
+	const float spawnMargin = std::max(context.shipWidth, context.shipHeight) + 40.f * context.scale;
+
+	for (int enemyIndex = 0; enemyIndex < enemySpawnCount; ++enemyIndex)
+	{
+		const int edge = enemyIndex;
+		const sf::Vector2f spawnPosition = CreateSpawnPositionFromEdge(edge, context, spawnMargin, rng);
+
+		const FiringSlotAssignment slot = FindNearestFiringSlot(spawnPosition, earthCenter, context, enemies);
+
+		EnemyShip enemy;
+		enemy.shape = CreateEnemyShip(context);
+		enemy.shape.setPosition(spawnPosition);
+		enemy.targetRingIndex = slot.ringIndex;
+		enemy.targetPointIndex = slot.pointIndex;
+		enemy.targetPosition = GetFiringPointPosition(earthCenter, context, slot.ringIndex, slot.pointIndex);
+		RotateShipTowardPoint(enemy.shape, spawnPosition, earthCenter);
+		enemies.push_back(enemy);
+	}
+}
+
+bool IsIntersectingScreen(const sf::FloatRect& bounds, const GameContext& context)
+{
+	return bounds.position.x < context.windowWidth
+		&& bounds.position.x + bounds.size.x > 0.f
+		&& bounds.position.y < context.windowHeight
+		&& bounds.position.y + bounds.size.y > 0.f;
+}
+
+bool IsShapeOnScreen(const sf::Shape& shape, const GameContext& context)
+{
+	return IsIntersectingScreen(shape.getGlobalBounds(), context);
+}
+
+bool RectsIntersect(const sf::FloatRect& first, const sf::FloatRect& second)
+{
+	return first.position.x < second.position.x + second.size.x
+		&& first.position.x + first.size.x > second.position.x
+		&& first.position.y < second.position.y + second.size.y
+		&& first.position.y + first.size.y > second.position.y;
+}
+
+bool BulletIntersectsConvexShape(const Bullet& bullet, const sf::ConvexShape& shape)
+{
+	const sf::FloatRect bulletBounds = bullet.shape.getGlobalBounds();
+	const sf::Vector2f bulletCenter(
+		bulletBounds.position.x + bulletBounds.size.x / 2.f,
+		bulletBounds.position.y + bulletBounds.size.y / 2.f);
+	return shape.getGlobalBounds().contains(bulletCenter);
+}
+
+void ProcessBulletNeutralCollisions(
+	std::vector<Bullet>& bullets,
+	std::vector<NeutralShip>& neutrals,
+	std::vector<EnemyShip>& enemies,
+	const GameContext& context,
+	sf::Vector2f earthCenter,
+	std::mt19937& rng)
+{
+	for (std::size_t bulletIndex = 0; bulletIndex < bullets.size();)
+	{
+		bool bulletHit = false;
+
+		for (std::size_t neutralIndex = 0; neutralIndex < neutrals.size(); ++neutralIndex)
+		{
+			if (!IsShapeOnScreen(neutrals[neutralIndex].shape, context))
+			{
+				continue;
+			}
+
+			if (!BulletIntersectsConvexShape(bullets[bulletIndex], neutrals[neutralIndex].shape))
+			{
+				continue;
+			}
+
+			neutrals.erase(neutrals.begin() + static_cast<std::ptrdiff_t>(neutralIndex));
+			SpawnEnemiesFromAllSides(enemies, context, earthCenter, rng);
+			bulletHit = true;
+			break;
+		}
+
+		if (bulletHit)
+		{
+			bullets.erase(bullets.begin() + static_cast<std::ptrdiff_t>(bulletIndex));
+		}
+		else
+		{
+			++bulletIndex;
+		}
+	}
+}
+
 sf::ConvexShape CreatePlayerShip(const GameContext& context)
 {
 	sf::ConvexShape ship(3);
 	ship.setPoint(0, sf::Vector2f(context.shipWidth / 2.f, 0.f));
 	ship.setPoint(1, sf::Vector2f(0.f, context.shipHeight));
 	ship.setPoint(2, sf::Vector2f(context.shipWidth, context.shipHeight));
+	ship.setOrigin(sf::Vector2f(context.shipWidth / 2.f, context.shipHeight / 2.f));
 	ship.setFillColor(kColorPlayerShipFill);
 	ship.setOutlineColor(kColorPlayerShipOutline);
 	ship.setOutlineThickness(1.f);
@@ -160,8 +444,8 @@ std::vector<OrbitSatellite> CreateOrbitSatellites(const GameContext& context)
 		satellite.angle = angleStep * static_cast<float>(i);
 		satellite.angularSpeed = orbitAngularSpeed;
 		satellite.orbitRadius = orbitRadius;
-		satellite.hp = 2;
-		satellite.maxHp = 2;
+		satellite.hp = satelliteHitPoints;
+		satellite.maxHp = satelliteHitPoints;
 		satellite.shape = sf::CircleShape(satelliteRadius);
 		satellite.shape.setOrigin(sf::Vector2f(satelliteRadius, satelliteRadius));
 		satellite.shape.setFillColor(kColorSatelliteFill);
@@ -349,12 +633,20 @@ bool CircleIntersectsRect(sf::Vector2f circleCenter, float radius, const sf::Flo
 	return dx * dx + dy * dy <= radius * radius;
 }
 
-bool ProcessAsteroidPlayerCollision(std::vector<Asteroid>& asteroids, const sf::ConvexShape& playerShip)
+bool ProcessAsteroidPlayerCollision(
+	std::vector<Asteroid>& asteroids,
+	const sf::ConvexShape& playerShip,
+	const GameContext& context)
 {
 	const sf::FloatRect playerBounds = playerShip.getGlobalBounds();
 
 	for (std::size_t asteroidIndex = 0; asteroidIndex < asteroids.size(); ++asteroidIndex)
 	{
+		if (!IsShapeOnScreen(asteroids[asteroidIndex].shape, context))
+		{
+			continue;
+		}
+
 		const sf::Vector2f asteroidCenter = asteroids[asteroidIndex].shape.getPosition();
 		const float asteroidRadius = asteroids[asteroidIndex].shape.getRadius();
 
@@ -420,6 +712,93 @@ void ProcessAsteroidMerges(std::vector<Asteroid>& asteroids)
 	}
 }
 
+void ProcessAsteroidNeutralCollisions(
+	std::vector<Asteroid>& asteroids,
+	std::vector<NeutralShip>& neutrals,
+	const GameContext& context)
+{
+	for (std::size_t asteroidIndex = 0; asteroidIndex < asteroids.size();)
+	{
+		bool asteroidDestroyed = false;
+		const sf::Vector2f asteroidCenter = asteroids[asteroidIndex].shape.getPosition();
+		const float asteroidRadius = asteroids[asteroidIndex].shape.getRadius();
+
+		if (!IsShapeOnScreen(asteroids[asteroidIndex].shape, context))
+		{
+			++asteroidIndex;
+			continue;
+		}
+
+		for (std::size_t neutralIndex = 0; neutralIndex < neutrals.size(); ++neutralIndex)
+		{
+			if (!IsShapeOnScreen(neutrals[neutralIndex].shape, context))
+			{
+				continue;
+			}
+
+			if (!CircleIntersectsRect(
+					asteroidCenter,
+					asteroidRadius,
+					neutrals[neutralIndex].shape.getGlobalBounds()))
+			{
+				continue;
+			}
+
+			neutrals.erase(neutrals.begin() + static_cast<std::ptrdiff_t>(neutralIndex));
+			asteroids.erase(asteroids.begin() + static_cast<std::ptrdiff_t>(asteroidIndex));
+			asteroidDestroyed = true;
+			break;
+		}
+
+		if (!asteroidDestroyed)
+		{
+			++asteroidIndex;
+		}
+	}
+}
+
+void ProcessAsteroidEnemyCollisions(
+	std::vector<Asteroid>& asteroids,
+	std::vector<EnemyShip>& enemies,
+	const GameContext& context)
+{
+	for (std::size_t asteroidIndex = 0; asteroidIndex < asteroids.size();)
+	{
+		bool asteroidDestroyed = false;
+		const sf::Vector2f asteroidCenter = asteroids[asteroidIndex].shape.getPosition();
+		const float asteroidRadius = asteroids[asteroidIndex].shape.getRadius();
+
+		if (!IsShapeOnScreen(asteroids[asteroidIndex].shape, context))
+		{
+			++asteroidIndex;
+			continue;
+		}
+
+		for (std::size_t enemyIndex = 0; enemyIndex < enemies.size(); ++enemyIndex)
+		{
+			if (!IsShapeOnScreen(enemies[enemyIndex].shape, context))
+			{
+				continue;
+			}
+
+			if (!CircleIntersectsRect(asteroidCenter, asteroidRadius, enemies[enemyIndex].shape.getGlobalBounds()))
+			{
+				continue;
+			}
+
+			enemies.erase(enemies.begin() + static_cast<std::ptrdiff_t>(enemyIndex));
+			asteroids.erase(asteroids.begin() + static_cast<std::ptrdiff_t>(asteroidIndex));
+			asteroidDestroyed = true;
+			break;
+		}
+
+		if (!asteroidDestroyed)
+		{
+			++asteroidIndex;
+		}
+	}
+}
+
 void ProcessAsteroidSatelliteCollisions(std::vector<Asteroid>& asteroids, std::vector<OrbitSatellite>& satellites)
 {
 	for (std::size_t asteroidIndex = 0; asteroidIndex < asteroids.size();)
@@ -452,7 +831,178 @@ void ProcessAsteroidSatelliteCollisions(std::vector<Asteroid>& asteroids, std::v
 	}
 }
 
-void ProcessBulletAsteroidCollisions(std::vector<Bullet>& bullets, std::vector<Asteroid>& asteroids)
+std::optional<sf::Vector2f> FindNearestSatellitePosition(
+	sf::Vector2f fromPosition,
+	const std::vector<OrbitSatellite>& satellites)
+{
+	if (satellites.empty())
+	{
+		return std::nullopt;
+	}
+
+	std::optional<sf::Vector2f> nearestPosition;
+	float nearestDistanceSquared = std::numeric_limits<float>::max();
+
+	for (const auto& satellite : satellites)
+	{
+		const sf::Vector2f satellitePosition = satellite.shape.getPosition();
+		const sf::Vector2f delta = satellitePosition - fromPosition;
+		const float distanceSquared = delta.x * delta.x + delta.y * delta.y;
+		if (distanceSquared < nearestDistanceSquared)
+		{
+			nearestDistanceSquared = distanceSquared;
+			nearestPosition = satellitePosition;
+		}
+	}
+
+	return nearestPosition;
+}
+
+void ProcessEnemyEnemyCollisions(std::vector<EnemyShip>& enemies, const GameContext& context)
+{
+	for (std::size_t firstIndex = 0; firstIndex < enemies.size();)
+	{
+		bool pairRemoved = false;
+
+		for (std::size_t secondIndex = firstIndex + 1; secondIndex < enemies.size(); ++secondIndex)
+		{
+			if (!IsShapeOnScreen(enemies[firstIndex].shape, context)
+				|| !IsShapeOnScreen(enemies[secondIndex].shape, context))
+			{
+				continue;
+			}
+
+			const sf::FloatRect firstBounds = enemies[firstIndex].shape.getGlobalBounds();
+			const sf::FloatRect secondBounds = enemies[secondIndex].shape.getGlobalBounds();
+			if (!RectsIntersect(firstBounds, secondBounds))
+			{
+				continue;
+			}
+
+			enemies.erase(enemies.begin() + static_cast<std::ptrdiff_t>(secondIndex));
+			enemies.erase(enemies.begin() + static_cast<std::ptrdiff_t>(firstIndex));
+			pairRemoved = true;
+			break;
+		}
+
+		if (!pairRemoved)
+		{
+			++firstIndex;
+		}
+	}
+}
+
+bool ProcessEnemyPlayerCollision(
+	std::vector<EnemyShip>& enemies,
+	const sf::ConvexShape& playerShip,
+	const GameContext& context)
+{
+	const sf::FloatRect playerBounds = playerShip.getGlobalBounds();
+
+	for (std::size_t enemyIndex = 0; enemyIndex < enemies.size();)
+	{
+		if (!IsShapeOnScreen(enemies[enemyIndex].shape, context))
+		{
+			++enemyIndex;
+			continue;
+		}
+
+		if (!RectsIntersect(enemies[enemyIndex].shape.getGlobalBounds(), playerBounds))
+		{
+			++enemyIndex;
+			continue;
+		}
+
+		enemies.erase(enemies.begin() + static_cast<std::ptrdiff_t>(enemyIndex));
+		return true;
+	}
+
+	return false;
+}
+
+void ProcessBulletEnemyCollisions(
+	std::vector<Bullet>& bullets,
+	std::vector<EnemyShip>& enemies,
+	const GameContext& context)
+{
+	for (std::size_t bulletIndex = 0; bulletIndex < bullets.size();)
+	{
+		bool bulletHit = false;
+
+		for (std::size_t enemyIndex = 0; enemyIndex < enemies.size(); ++enemyIndex)
+		{
+			if (!IsShapeOnScreen(enemies[enemyIndex].shape, context))
+			{
+				continue;
+			}
+
+			if (!BulletIntersectsConvexShape(bullets[bulletIndex], enemies[enemyIndex].shape))
+			{
+				continue;
+			}
+
+			enemies.erase(enemies.begin() + static_cast<std::ptrdiff_t>(enemyIndex));
+			bulletHit = true;
+			break;
+		}
+
+		if (bulletHit)
+		{
+			bullets.erase(bullets.begin() + static_cast<std::ptrdiff_t>(bulletIndex));
+		}
+		else
+		{
+			++bulletIndex;
+		}
+	}
+}
+
+void ProcessBulletSatelliteCollisions(std::vector<Bullet>& bullets, std::vector<OrbitSatellite>& satellites)
+{
+	for (std::size_t bulletIndex = 0; bulletIndex < bullets.size();)
+	{
+		const sf::FloatRect bulletBounds = bullets[bulletIndex].shape.getGlobalBounds();
+		const sf::Vector2f bulletCenter(
+			bulletBounds.position.x + bulletBounds.size.x / 2.f,
+			bulletBounds.position.y + bulletBounds.size.y / 2.f);
+
+		bool bulletHit = false;
+
+		for (std::size_t satelliteIndex = 0; satelliteIndex < satellites.size(); ++satelliteIndex)
+		{
+			const sf::Vector2f satelliteCenter = satellites[satelliteIndex].shape.getPosition();
+			const float satelliteRadius = satellites[satelliteIndex].shape.getRadius();
+
+			if (!CircleContainsPoint(satelliteCenter, satelliteRadius, bulletCenter))
+			{
+				continue;
+			}
+
+			satellites[satelliteIndex].hp -= 1;
+			if (satellites[satelliteIndex].hp <= 0)
+			{
+				satellites.erase(satellites.begin() + static_cast<std::ptrdiff_t>(satelliteIndex));
+			}
+
+			bulletHit = true;
+			break;
+		}
+
+		if (bulletHit)
+		{
+			bullets.erase(bullets.begin() + static_cast<std::ptrdiff_t>(bulletIndex));
+		}
+		else
+		{
+			++bulletIndex;
+		}
+	}
+}
+
+void ProcessBulletAsteroidCollisions(
+	std::vector<Bullet>& bullets,
+	std::vector<Asteroid>& asteroids,
+	const GameContext& context)
 {
 	for (std::size_t bulletIndex = 0; bulletIndex < bullets.size();)
 	{
@@ -465,6 +1015,11 @@ void ProcessBulletAsteroidCollisions(std::vector<Bullet>& bullets, std::vector<A
 
 		for (std::size_t asteroidIndex = 0; asteroidIndex < asteroids.size(); ++asteroidIndex)
 		{
+			if (!IsShapeOnScreen(asteroids[asteroidIndex].shape, context))
+			{
+				continue;
+			}
+
 			const sf::Vector2f asteroidCenter = asteroids[asteroidIndex].shape.getPosition();
 			const float asteroidRadius = asteroids[asteroidIndex].shape.getRadius();
 
@@ -500,12 +1055,9 @@ void ProcessBulletAsteroidCollisions(std::vector<Bullet>& bullets, std::vector<A
 
 std::vector<Asteroid> CreateInitialAsteroids(const GameContext& context, std::mt19937& rng)
 {
-	std::uniform_int_distribution<int> countDist(minAsteroidCount, maxAsteroidCount);
-	const int asteroidCount = countDist(rng);
-
 	std::vector<Asteroid> asteroids;
-	asteroids.reserve(static_cast<std::size_t>(asteroidCount));
-	for (int i = 0; i < asteroidCount; ++i)
+	asteroids.reserve(static_cast<std::size_t>(targetAsteroidCount));
+	for (int i = 0; i < targetAsteroidCount; ++i)
 	{
 		asteroids.push_back(CreateRandomAsteroid(context, rng));
 	}
@@ -630,23 +1182,80 @@ void KeepInsideScreen(sf::Shape& shape, const GameContext& context, sf::Vector2f
 	}
 }
 
-void UpdateShipRotation(sf::ConvexShape& ship, sf::Vector2f movement)
+sf::Vector2f GetMouseWorldPosition(const sf::RenderWindow& window)
 {
-	if (movement.x == 0.f && movement.y == 0.f)
-	{
-		return;
-	}
-
-	const float angleDegrees = std::atan2(movement.y, movement.x) * 180.f / 3.14159265f + 90.f;
-	ship.setRotation(sf::degrees(angleDegrees));
+	const sf::Vector2i mousePixel = sf::Mouse::getPosition(window);
+	return window.mapPixelToCoords(mousePixel);
 }
 
-void UpdateAsteroids(std::vector<Asteroid>& asteroids, float deltaTime, const GameContext& context)
+void UpdatePlayerShipAim(sf::ConvexShape& ship, const sf::RenderWindow& window)
+{
+	const sf::Vector2f shipCenter = ship.getPosition();
+	const sf::Vector2f mousePosition = GetMouseWorldPosition(window);
+	RotateShipTowardPoint(ship, shipCenter, mousePosition);
+}
+
+void UpdateEnemies(
+	std::vector<EnemyShip>& enemies,
+	std::vector<Bullet>& bullets,
+	const std::vector<OrbitSatellite>& satellites,
+	float deltaTime,
+	sf::Vector2f earthCenter,
+	const GameContext& context)
+{
+	const float moveSpeed = enemyMoveSpeed * context.scale;
+	const float arrivalDistance = 4.f * context.scale;
+
+	for (auto& enemy : enemies)
+	{
+		const sf::Vector2f currentPosition = enemy.shape.getPosition();
+		sf::Vector2f toTarget = enemy.targetPosition - currentPosition;
+		const float distance = std::sqrt(toTarget.x * toTarget.x + toTarget.y * toTarget.y);
+
+		if (distance > arrivalDistance)
+		{
+			toTarget /= distance;
+			enemy.shape.move(toTarget * moveSpeed * deltaTime);
+			KeepInsideScreen(enemy.shape, context, nullptr);
+			RotateShipTowardPoint(enemy.shape, currentPosition, earthCenter);
+			continue;
+		}
+
+		const std::optional<sf::Vector2f> satelliteTarget = FindNearestSatellitePosition(currentPosition, satellites);
+		if (!satelliteTarget.has_value())
+		{
+			RotateShipTowardPoint(enemy.shape, currentPosition, earthCenter);
+			continue;
+		}
+
+		RotateShipTowardPoint(enemy.shape, currentPosition, *satelliteTarget);
+
+		enemy.fireCooldown -= deltaTime;
+		if (enemy.fireCooldown > 0.f)
+		{
+			continue;
+		}
+
+		bullets.push_back(CreateBulletFromShip(enemy.shape, context));
+		enemy.fireCooldown = enemyFireInterval;
+	}
+}
+
+void UpdateAsteroids(
+	std::vector<Asteroid>& asteroids,
+	float deltaTime,
+	const GameContext& context,
+	std::mt19937& rng)
 {
 	for (auto& asteroid : asteroids)
 	{
 		asteroid.shape.move(asteroid.velocity * deltaTime);
 		KeepInsideScreen(asteroid.shape, context, &asteroid.velocity);
+	}
+
+	while (static_cast<int>(asteroids.size()) < targetAsteroidCount)
+	{
+		asteroids.push_back(CreateRandomAsteroid(context, rng));
 	}
 }
 
@@ -696,7 +1305,7 @@ void UpdateBullets(std::vector<Bullet>& bullets, float deltaTime, const GameCont
 			}),
 		bullets.end());
 }
-} // namespace
+} 
 
 int main()
 {
@@ -713,13 +1322,13 @@ int main()
 	sf::CircleShape earth = CreateEarth(context);
 	std::vector<OrbitSatellite> orbitSatellites = CreateOrbitSatellites(context);
 	sf::ConvexShape playerShip = CreatePlayerShip(context);
-	playerShip.setPosition(sf::Vector2f(
-		context.windowWidth / 2.f - context.shipWidth / 2.f,
-		context.windowHeight / 2.f - context.shipHeight / 2.f));
+	playerShip.setPosition(sf::Vector2f(context.windowWidth / 2.f, context.windowHeight / 2.f));
 
 	std::mt19937 rng(std::random_device{}());
 	std::vector<Asteroid> asteroids = CreateInitialAsteroids(context, rng);
 	std::vector<NeutralShip> neutralShips = CreateNeutralShips(context, rng);
+	std::vector<EnemyShip> enemies;
+	enemies.reserve(32);
 	std::vector<Bullet> bullets;
 	bullets.reserve(64);
 
@@ -741,9 +1350,14 @@ int main()
 			{
 				window.close();
 			}
-			else if (event->is<sf::Event::MouseButtonPressed>())
+			else if (const auto* mousePressed = event->getIf<sf::Event::MouseButtonPressed>())
 			{
 				window.requestFocus();
+				if (mousePressed->button == sf::Mouse::Button::Left)
+				{
+					UpdatePlayerShipAim(playerShip, window);
+					bullets.push_back(CreateBulletFromShip(playerShip, context));
+				}
 			}
 			else if (event->is<sf::Event::FocusGained>())
 			{
@@ -762,11 +1376,6 @@ int main()
 				{
 					window.close();
 				}
-				else if (keyPressed->code == sf::Keyboard::Key::Space)
-				{
-					bullets.push_back(CreateBulletFromShip(playerShip, context));
-				}
-
 				switch (keyPressed->scancode)
 				{
 				case sf::Keyboard::Scancode::A:
@@ -827,16 +1436,27 @@ int main()
 
 		playerShip.move(offset);
 		KeepInsideScreen(playerShip, context, nullptr);
-		UpdateShipRotation(playerShip, offset);
+		UpdatePlayerShipAim(playerShip, window);
 
-		UpdateAsteroids(asteroids, deltaTime, context);
+		UpdateAsteroids(asteroids, deltaTime, context, rng);
 		ProcessAsteroidMerges(asteroids);
 		UpdateNeutralShips(neutralShips, deltaTime, context, rng);
-		UpdateBullets(bullets, deltaTime, context);
 		UpdateOrbitSatellites(orbitSatellites, deltaTime, earthCenter, context);
+		UpdateEnemies(enemies, bullets, orbitSatellites, deltaTime, earthCenter, context);
+		ProcessEnemyEnemyCollisions(enemies, context);
 		ProcessAsteroidSatelliteCollisions(asteroids, orbitSatellites);
-		ProcessBulletAsteroidCollisions(bullets, asteroids);
-		if (ProcessAsteroidPlayerCollision(asteroids, playerShip))
+		ProcessAsteroidEnemyCollisions(asteroids, enemies, context);
+		ProcessAsteroidNeutralCollisions(asteroids, neutralShips, context);
+		UpdateBullets(bullets, deltaTime, context);
+		ProcessBulletSatelliteCollisions(bullets, orbitSatellites);
+		ProcessBulletEnemyCollisions(bullets, enemies, context);
+		ProcessBulletAsteroidCollisions(bullets, asteroids, context);
+		ProcessBulletNeutralCollisions(bullets, neutralShips, enemies, context, earthCenter, rng);
+		if (ProcessEnemyPlayerCollision(enemies, playerShip, context))
+		{
+			window.close();
+		}
+		else if (ProcessAsteroidPlayerCollision(asteroids, playerShip, context))
 		{
 			window.close();
 		}
@@ -855,6 +1475,10 @@ int main()
 		for (const auto& neutral : neutralShips)
 		{
 			window.draw(neutral.shape);
+		}
+		for (const auto& enemy : enemies)
+		{
+			window.draw(enemy.shape);
 		}
 		for (const auto& bullet : bullets)
 		{
