@@ -22,6 +22,9 @@ struct Asteroid
 {
 	sf::CircleShape shape;
 	sf::Vector2f velocity;
+	int hp = 2;
+	int maxHp = 2;
+	int mergeCount = 1;
 };
 
 struct OrbitSatellite
@@ -51,11 +54,14 @@ namespace
 constexpr float shipVisualScale = 0.45f;
 constexpr int minAsteroidCount = 10;
 constexpr int maxAsteroidCount = 15;
+constexpr int baseAsteroidHitPoints = 2;
+constexpr float asteroidMassRetention = 0.9f;
+constexpr float asteroidSpeedAfterMerge = 0.5f;
 constexpr int orbitSatelliteCount = 8;
 constexpr float orbitAngularSpeed = 0.7f;
 constexpr int neutralShipCount = 4;
 constexpr float neutralShipSizeMultiplier = 5.f;
-constexpr float neutralMoveSpeed = 5.f;
+constexpr float neutralMoveSpeed = 7.5f;
 
 constexpr sf::Color kColorPlayerShipFill(50, 120, 230);
 constexpr sf::Color kColorPlayerShipOutline(120, 180, 255);
@@ -304,7 +310,192 @@ Asteroid CreateRandomAsteroid(const GameContext& context, std::mt19937& rng)
 	shape.setOutlineColor(kColorAsteroidOutline);
 	shape.setOutlineThickness(1.f);
 
-	return Asteroid{ shape, velocity };
+	return Asteroid{ shape, velocity, baseAsteroidHitPoints, baseAsteroidHitPoints, 1 };
+}
+
+void UpdateAsteroidDamageVisual(Asteroid& asteroid)
+{
+	if (asteroid.hp < asteroid.maxHp)
+	{
+		asteroid.shape.setFillColor(sf::Color(200, 130, 70));
+	}
+	else
+	{
+		asteroid.shape.setFillColor(kColorAsteroidFill);
+	}
+}
+
+bool CircleContainsPoint(sf::Vector2f center, float radius, sf::Vector2f point)
+{
+	const float dx = point.x - center.x;
+	const float dy = point.y - center.y;
+	return dx * dx + dy * dy <= radius * radius;
+}
+
+bool CirclesIntersect(sf::Vector2f centerA, float radiusA, sf::Vector2f centerB, float radiusB)
+{
+	const float dx = centerA.x - centerB.x;
+	const float dy = centerA.y - centerB.y;
+	const float combinedRadius = radiusA + radiusB;
+	return dx * dx + dy * dy <= combinedRadius * combinedRadius;
+}
+
+bool CircleIntersectsRect(sf::Vector2f circleCenter, float radius, const sf::FloatRect& rect)
+{
+	const float closestX = std::clamp(circleCenter.x, rect.position.x, rect.position.x + rect.size.x);
+	const float closestY = std::clamp(circleCenter.y, rect.position.y, rect.position.y + rect.size.y);
+	const float dx = circleCenter.x - closestX;
+	const float dy = circleCenter.y - closestY;
+	return dx * dx + dy * dy <= radius * radius;
+}
+
+bool ProcessAsteroidPlayerCollision(std::vector<Asteroid>& asteroids, const sf::ConvexShape& playerShip)
+{
+	const sf::FloatRect playerBounds = playerShip.getGlobalBounds();
+
+	for (std::size_t asteroidIndex = 0; asteroidIndex < asteroids.size(); ++asteroidIndex)
+	{
+		const sf::Vector2f asteroidCenter = asteroids[asteroidIndex].shape.getPosition();
+		const float asteroidRadius = asteroids[asteroidIndex].shape.getRadius();
+
+		if (CircleIntersectsRect(asteroidCenter, asteroidRadius, playerBounds))
+		{
+			asteroids.erase(asteroids.begin() + static_cast<std::ptrdiff_t>(asteroidIndex));
+			return true;
+		}
+	}
+
+	return false;
+}
+
+Asteroid MergeAsteroids(const Asteroid& first, const Asteroid& second)
+{
+	const float radiusA = first.shape.getRadius();
+	const float radiusB = second.shape.getRadius();
+	const float massA = radiusA;
+	const float massB = radiusB;
+	const float totalMassBeforeLoss = massA + massB;
+	const float mergedMass = totalMassBeforeLoss * asteroidMassRetention;
+
+	const sf::Vector2f positionA = first.shape.getPosition();
+	const sf::Vector2f positionB = second.shape.getPosition();
+	const sf::Vector2f mergedPosition = (massA * positionA + massB * positionB) / totalMassBeforeLoss;
+
+	sf::Vector2f mergedVelocity = (massA * first.velocity + massB * second.velocity) / totalMassBeforeLoss;
+	mergedVelocity *= asteroidSpeedAfterMerge;
+
+	const float mergedRadius = mergedMass;
+	const int mergedCount = first.mergeCount + second.mergeCount;
+
+	sf::CircleShape shape(mergedRadius);
+	shape.setOrigin(sf::Vector2f(mergedRadius, mergedRadius));
+	shape.setPosition(mergedPosition);
+	shape.setFillColor(kColorAsteroidFill);
+	shape.setOutlineColor(kColorAsteroidOutline);
+	shape.setOutlineThickness(1.f);
+
+	return Asteroid{ shape, mergedVelocity, baseAsteroidHitPoints * mergedCount, baseAsteroidHitPoints * mergedCount, mergedCount };
+}
+
+void ProcessAsteroidMerges(std::vector<Asteroid>& asteroids)
+{
+	for (std::size_t firstIndex = 0; firstIndex < asteroids.size(); ++firstIndex)
+	{
+		for (std::size_t secondIndex = firstIndex + 1; secondIndex < asteroids.size();)
+		{
+			const sf::Vector2f centerA = asteroids[firstIndex].shape.getPosition();
+			const float radiusA = asteroids[firstIndex].shape.getRadius();
+			const sf::Vector2f centerB = asteroids[secondIndex].shape.getPosition();
+			const float radiusB = asteroids[secondIndex].shape.getRadius();
+
+			if (!CirclesIntersect(centerA, radiusA, centerB, radiusB))
+			{
+				++secondIndex;
+				continue;
+			}
+
+			asteroids[firstIndex] = MergeAsteroids(asteroids[firstIndex], asteroids[secondIndex]);
+			asteroids.erase(asteroids.begin() + static_cast<std::ptrdiff_t>(secondIndex));
+		}
+	}
+}
+
+void ProcessAsteroidSatelliteCollisions(std::vector<Asteroid>& asteroids, std::vector<OrbitSatellite>& satellites)
+{
+	for (std::size_t asteroidIndex = 0; asteroidIndex < asteroids.size();)
+	{
+		const sf::Vector2f asteroidCenter = asteroids[asteroidIndex].shape.getPosition();
+		const float asteroidRadius = asteroids[asteroidIndex].shape.getRadius();
+
+		bool asteroidDestroyed = false;
+
+		for (std::size_t satelliteIndex = 0; satelliteIndex < satellites.size(); ++satelliteIndex)
+		{
+			const sf::Vector2f satelliteCenter = satellites[satelliteIndex].shape.getPosition();
+			const float satelliteRadius = satellites[satelliteIndex].shape.getRadius();
+
+			if (!CirclesIntersect(asteroidCenter, asteroidRadius, satelliteCenter, satelliteRadius))
+			{
+				continue;
+			}
+
+			satellites.erase(satellites.begin() + static_cast<std::ptrdiff_t>(satelliteIndex));
+			asteroids.erase(asteroids.begin() + static_cast<std::ptrdiff_t>(asteroidIndex));
+			asteroidDestroyed = true;
+			break;
+		}
+
+		if (!asteroidDestroyed)
+		{
+			++asteroidIndex;
+		}
+	}
+}
+
+void ProcessBulletAsteroidCollisions(std::vector<Bullet>& bullets, std::vector<Asteroid>& asteroids)
+{
+	for (std::size_t bulletIndex = 0; bulletIndex < bullets.size();)
+	{
+		const sf::FloatRect bulletBounds = bullets[bulletIndex].shape.getGlobalBounds();
+		const sf::Vector2f bulletCenter(
+			bulletBounds.position.x + bulletBounds.size.x / 2.f,
+			bulletBounds.position.y + bulletBounds.size.y / 2.f);
+
+		bool bulletHit = false;
+
+		for (std::size_t asteroidIndex = 0; asteroidIndex < asteroids.size(); ++asteroidIndex)
+		{
+			const sf::Vector2f asteroidCenter = asteroids[asteroidIndex].shape.getPosition();
+			const float asteroidRadius = asteroids[asteroidIndex].shape.getRadius();
+
+			if (!CircleContainsPoint(asteroidCenter, asteroidRadius, bulletCenter))
+			{
+				continue;
+			}
+
+			asteroids[asteroidIndex].hp -= 1;
+			if (asteroids[asteroidIndex].hp <= 0)
+			{
+				asteroids.erase(asteroids.begin() + static_cast<std::ptrdiff_t>(asteroidIndex));
+			}
+			else
+			{
+				UpdateAsteroidDamageVisual(asteroids[asteroidIndex]);
+			}
+
+			bulletHit = true;
+			break;
+		}
+
+		if (bulletHit)
+		{
+			bullets.erase(bullets.begin() + static_cast<std::ptrdiff_t>(bulletIndex));
+		}
+		else
+		{
+			++bulletIndex;
+		}
+	}
 }
 
 std::vector<Asteroid> CreateInitialAsteroids(const GameContext& context, std::mt19937& rng)
@@ -639,9 +830,16 @@ int main()
 		UpdateShipRotation(playerShip, offset);
 
 		UpdateAsteroids(asteroids, deltaTime, context);
+		ProcessAsteroidMerges(asteroids);
 		UpdateNeutralShips(neutralShips, deltaTime, context, rng);
 		UpdateBullets(bullets, deltaTime, context);
 		UpdateOrbitSatellites(orbitSatellites, deltaTime, earthCenter, context);
+		ProcessAsteroidSatelliteCollisions(asteroids, orbitSatellites);
+		ProcessBulletAsteroidCollisions(bullets, asteroids);
+		if (ProcessAsteroidPlayerCollision(asteroids, playerShip))
+		{
+			window.close();
+		}
 
 		window.clear(sf::Color(10, 10, 25));
 		window.draw(earth);
