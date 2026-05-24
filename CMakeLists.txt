@@ -9,6 +9,7 @@ find_package(SFML 3 COMPONENTS Graphics Window System REQUIRED)
 
 add_executable(GAME src/main.cpp)
 
+target_include_directories(GAME PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(GAME PRIVATE SFML::Graphics SFML::Window SFML::System)
 
 find_program(CLANG_FORMAT clang-format)
