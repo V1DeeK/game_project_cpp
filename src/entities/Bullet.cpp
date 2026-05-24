@@ -4,35 +4,14 @@
 #include <cmath>
 
 #include "config/Colors.hpp"
-
-namespace
-{
-sf::Vector2f GetShipForwardDirection(const sf::ConvexShape& ship, const game::GameContext& context)
-{
-	const sf::Transform transform = ship.getTransform();
-	const sf::Vector2f nose = transform.transformPoint(sf::Vector2f(context.shipWidth / 2.f, 0.f));
-	const sf::Vector2f body = transform.transformPoint(sf::Vector2f(context.shipWidth / 2.f, context.shipHeight * 0.5f));
-	sf::Vector2f direction = nose - body;
-	const float length = std::sqrt(direction.x * direction.x + direction.y * direction.y);
-	if (length > 0.0001f)
-	{
-		direction /= length;
-	}
-	return direction;
-}
-
-sf::Vector2f GetShipNosePosition(const sf::ConvexShape& ship, const game::GameContext& context)
-{
-	return ship.getTransform().transformPoint(sf::Vector2f(context.shipWidth / 2.f, 0.f));
-}
-} // namespace
+#include "entities/Ship.hpp"
 
 namespace game
 {
 Bullet Bullet::CreateFromShip(const sf::ConvexShape& ship, const GameContext& context)
 {
-	const sf::Vector2f direction = GetShipForwardDirection(ship, context);
-	const sf::Vector2f nosePosition = GetShipNosePosition(ship, context);
+	const sf::Vector2f direction = Ship::GetForwardDirection(ship, context);
+	const sf::Vector2f nosePosition = Ship::GetNosePosition(ship, context);
 
 	const float bulletWidth = 2.f * context.scale;
 	const float bulletLength = 5.f * context.scale;
@@ -107,4 +86,4 @@ bool Bullet::IntersectsConvexShape(const sf::ConvexShape& shape) const
 {
 	return shape.getGlobalBounds().contains(GetCenter());
 }
-} 
+} // namespace game

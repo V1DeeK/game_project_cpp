@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(SFML 3 COMPONENTS Graphics Window System REQUIRED)
 
-add_executable(GAME src/main.cpp src/app/GameContext.cpp src/entities/Bullet.cpp)
+add_executable(GAME src/main.cpp src/app/GameContext.cpp src/entities/Bullet.cpp src/entities/Ship.cpp)
 
 target_include_directories(GAME PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(GAME PRIVATE SFML::Graphics SFML::Window SFML::System)

@@ -12,10 +12,12 @@
 #include "app/GameContext.hpp"
 #include "collision/Geometry.hpp"
 #include "entities/Bullet.hpp"
+#include "entities/Ship.hpp"
 
 using game::Bullet;
 using game::CreateGameContext;
 using game::GameContext;
+using game::Ship;
 
 struct Asteroid
 {
@@ -199,32 +201,6 @@ FiringSlotAssignment FindNearestFiringSlot(
 	return result;
 }
 
-void RotateShipTowardPoint(sf::ConvexShape& ship, sf::Vector2f shipCenter, sf::Vector2f targetPoint)
-{
-	sf::Vector2f direction = targetPoint - shipCenter;
-	const float length = std::sqrt(direction.x * direction.x + direction.y * direction.y);
-	if (length <= 0.0001f)
-	{
-		return;
-	}
-
-	const float angleDegrees = std::atan2(direction.y, direction.x) * 180.f / 3.14159265f + 90.f;
-	ship.setRotation(sf::degrees(angleDegrees));
-}
-
-sf::ConvexShape CreateEnemyShip(const GameContext& context)
-{
-	sf::ConvexShape ship(3);
-	ship.setPoint(0, sf::Vector2f(context.shipWidth / 2.f, 0.f));
-	ship.setPoint(1, sf::Vector2f(0.f, context.shipHeight));
-	ship.setPoint(2, sf::Vector2f(context.shipWidth, context.shipHeight));
-	ship.setOrigin(sf::Vector2f(context.shipWidth / 2.f, context.shipHeight / 2.f));
-	ship.setFillColor(kColorEnemyFill);
-	ship.setOutlineColor(kColorEnemyOutline);
-	ship.setOutlineThickness(1.f);
-	return ship;
-}
-
 sf::Vector2f CreateSpawnPositionFromEdge(int edge, const GameContext& context, float spawnMargin, std::mt19937& rng)
 {
 	std::uniform_real_distribution<float> positionX(0.f, context.windowWidth);
@@ -261,13 +237,13 @@ void SpawnEnemiesFromAllSides(
 		std::uniform_int_distribution<int> behaviorDist(0, 1);
 
 		EnemyShip enemy;
-		enemy.shape = CreateEnemyShip(context);
+		enemy.shape = Ship::CreateEnemyShip(context).GetShape();
 		enemy.shape.setPosition(spawnPosition);
 		enemy.targetRingIndex = slot.ringIndex;
 		enemy.targetPointIndex = slot.pointIndex;
 		enemy.targetPosition = GetFiringPointPosition(earthCenter, context, slot.ringIndex, slot.pointIndex);
 		enemy.behavior = behaviorDist(rng) == 0 ? EnemyBehavior::AttackSatellites : EnemyBehavior::HuntPlayer;
-		RotateShipTowardPoint(enemy.shape, spawnPosition, earthCenter);
+		Ship::RotateToward(enemy.shape, spawnPosition, earthCenter);
 		enemies.push_back(enemy);
 	}
 }
@@ -311,19 +287,6 @@ void ProcessBulletNeutralCollisions(
 			++bulletIndex;
 		}
 	}
-}
-
-sf::ConvexShape CreatePlayerShip(const GameContext& context)
-{
-	sf::ConvexShape ship(3);
-	ship.setPoint(0, sf::Vector2f(context.shipWidth / 2.f, 0.f));
-	ship.setPoint(1, sf::Vector2f(0.f, context.shipHeight));
-	ship.setPoint(2, sf::Vector2f(context.shipWidth, context.shipHeight));
-	ship.setOrigin(sf::Vector2f(context.shipWidth / 2.f, context.shipHeight / 2.f));
-	ship.setFillColor(kColorPlayerShipFill);
-	ship.setOutlineColor(kColorPlayerShipOutline);
-	ship.setOutlineThickness(1.f);
-	return ship;
 }
 
 sf::CircleShape CreateEarth(const GameContext& context)
@@ -430,25 +393,6 @@ void DrawSatelliteHpBar(sf::RenderWindow& window, const OrbitSatellite& satellit
 	}
 }
 
-sf::Vector2f GetShipForwardDirection(const sf::ConvexShape& ship, const GameContext& context)
-{
-	const sf::Transform transform = ship.getTransform();
-	const sf::Vector2f nose = transform.transformPoint(sf::Vector2f(context.shipWidth / 2.f, 0.f));
-	const sf::Vector2f body = transform.transformPoint(sf::Vector2f(context.shipWidth / 2.f, context.shipHeight * 0.5f));
-	sf::Vector2f direction = nose - body;
-	const float length = std::sqrt(direction.x * direction.x + direction.y * direction.y);
-	if (length > 0.0001f)
-	{
-		direction /= length;
-	}
-	return direction;
-}
-
-sf::Vector2f GetShipNosePosition(const sf::ConvexShape& ship, const GameContext& context)
-{
-	return ship.getTransform().transformPoint(sf::Vector2f(context.shipWidth / 2.f, 0.f));
-}
-
 sf::Vector2f CreateOffScreenSpawnPosition(
 	const GameContext& context,
 	float spawnMargin,
@@ -508,10 +452,10 @@ void UpdateAsteroidDamageVisual(Asteroid& asteroid)
 
 bool ProcessAsteroidPlayerCollision(
 	std::vector<Asteroid>& asteroids,
-	const sf::ConvexShape& playerShip,
+	const Ship& playerShip,
 	const GameContext& context)
 {
-	const sf::FloatRect playerBounds = playerShip.getGlobalBounds();
+	const sf::FloatRect playerBounds = playerShip.GetBounds();
 
 	for (std::size_t asteroidIndex = 0; asteroidIndex < asteroids.size(); ++asteroidIndex)
 	{
@@ -534,7 +478,7 @@ bool ProcessAsteroidPlayerCollision(
 }
 
 bool ProcessPlayerCollisions(
-	const sf::ConvexShape& playerShip,
+	const Ship& playerShip,
 	std::vector<Asteroid>& asteroids,
 	std::vector<EnemyShip>& enemies,
 	std::vector<NeutralShip>& neutrals,
@@ -542,7 +486,7 @@ bool ProcessPlayerCollisions(
 	std::vector<Bullet>& bullets,
 	const GameContext& context)
 {
-	const sf::FloatRect playerBounds = playerShip.getGlobalBounds();
+	const sf::FloatRect playerBounds = playerShip.GetBounds();
 
 	for (std::size_t satelliteIndex = 0; satelliteIndex < satellites.size(); ++satelliteIndex)
 	{
@@ -564,7 +508,7 @@ bool ProcessPlayerCollisions(
 
 	for (std::size_t bulletIndex = 0; bulletIndex < bullets.size(); ++bulletIndex)
 	{
-		if (!bullets[bulletIndex].IntersectsConvexShape(playerShip))
+		if (!bullets[bulletIndex].IntersectsConvexShape(playerShip.GetShape()))
 		{
 			continue;
 		}
@@ -1207,11 +1151,9 @@ sf::Vector2f GetMouseWorldPosition(const sf::RenderWindow& window)
 	return window.mapPixelToCoords(mousePixel);
 }
 
-void UpdatePlayerShipAim(sf::ConvexShape& ship, const sf::RenderWindow& window)
+void UpdatePlayerShipAim(Ship& ship, const sf::RenderWindow& window)
 {
-	const sf::Vector2f shipCenter = ship.getPosition();
-	const sf::Vector2f mousePosition = GetMouseWorldPosition(window);
-	RotateShipTowardPoint(ship, shipCenter, mousePosition);
+	ship.RotateToward(GetMouseWorldPosition(window));
 }
 
 void UpdateEnemies(
@@ -1241,7 +1183,7 @@ void UpdateEnemies(
 				KeepInsideScreen(enemy.shape, context, nullptr);
 			}
 
-			RotateShipTowardPoint(enemy.shape, enemy.shape.getPosition(), playerPosition);
+			Ship::RotateToward(enemy.shape, enemy.shape.getPosition(), playerPosition);
 
 			enemy.fireCooldown -= deltaTime;
 			if (enemy.fireCooldown <= 0.f)
@@ -1260,18 +1202,18 @@ void UpdateEnemies(
 			toTarget /= distance;
 			enemy.shape.move(toTarget * moveSpeed * deltaTime);
 			KeepInsideScreen(enemy.shape, context, nullptr);
-			RotateShipTowardPoint(enemy.shape, currentPosition, earthCenter);
+			Ship::RotateToward(enemy.shape, currentPosition, earthCenter);
 			continue;
 		}
 
 		const std::optional<sf::Vector2f> satelliteTarget = FindNearestSatellitePosition(currentPosition, satellites);
 		if (!satelliteTarget.has_value())
 		{
-			RotateShipTowardPoint(enemy.shape, currentPosition, earthCenter);
+			Ship::RotateToward(enemy.shape, currentPosition, earthCenter);
 			continue;
 		}
 
-		RotateShipTowardPoint(enemy.shape, currentPosition, *satelliteTarget);
+		Ship::RotateToward(enemy.shape, currentPosition, *satelliteTarget);
 
 		enemy.fireCooldown -= deltaTime;
 		if (enemy.fireCooldown <= 0.f)
@@ -1340,8 +1282,8 @@ int main()
 
 	sf::CircleShape earth = CreateEarth(context);
 	std::vector<OrbitSatellite> orbitSatellites = CreateOrbitSatellites(context);
-	sf::ConvexShape playerShip = CreatePlayerShip(context);
-	playerShip.setPosition(sf::Vector2f(context.windowWidth / 2.f, context.windowHeight / 2.f));
+	Ship playerShip = Ship::CreatePlayerShip(context);
+	playerShip.SetPosition(sf::Vector2f(context.windowWidth / 2.f, context.windowHeight / 2.f));
 
 	std::mt19937 rng(std::random_device{}());
 	std::vector<Asteroid> asteroids = CreateInitialAsteroids(context, rng);
@@ -1375,7 +1317,7 @@ int main()
 				if (mousePressed->button == sf::Mouse::Button::Left)
 				{
 					UpdatePlayerShipAim(playerShip, window);
-					bullets.push_back(Bullet::CreateFromShip(playerShip, context));
+					bullets.push_back(Bullet::CreateFromShip(playerShip.GetShape(), context));
 				}
 			}
 			else if (event->is<sf::Event::FocusGained>())
@@ -1453,8 +1395,8 @@ int main()
 			offset.y += context.moveSpeed * deltaTime;
 		}
 
-		playerShip.move(offset);
-		KeepInsideScreen(playerShip, context, nullptr);
+		playerShip.Move(offset);
+		KeepInsideScreen(playerShip.GetShape(), context, nullptr);
 		UpdatePlayerShipAim(playerShip, window);
 
 		UpdateAsteroids(asteroids, deltaTime, context, rng);
@@ -1467,7 +1409,7 @@ int main()
 			orbitSatellites,
 			deltaTime,
 			earthCenter,
-			playerShip.getPosition(),
+			playerShip.GetPosition(),
 			context);
 		ProcessEnemyEnemyCollisions(enemies, context);
 		ProcessEnemyNeutralCollisions(enemies, neutralShips, context);
@@ -1516,7 +1458,7 @@ int main()
 		{
 			bullet.Draw(window);
 		}
-		window.draw(playerShip);
+		playerShip.Draw(window);
 		window.display();
 	}
 
