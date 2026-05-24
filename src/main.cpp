@@ -11,7 +11,9 @@
 #include "config/GameConstants.hpp"
 #include "app/GameContext.hpp"
 #include "collision/Geometry.hpp"
+#include "entities/Bullet.hpp"
 
+using game::Bullet;
 using game::CreateGameContext;
 using game::GameContext;
 
@@ -37,12 +39,6 @@ struct OrbitSatellite
 struct NeutralShip
 {
 	sf::ConvexShape shape;
-	sf::Vector2f velocity;
-};
-
-struct Bullet
-{
-	sf::RectangleShape shape;
 	sf::Vector2f velocity;
 };
 
@@ -276,15 +272,6 @@ void SpawnEnemiesFromAllSides(
 	}
 }
 
-bool BulletIntersectsConvexShape(const Bullet& bullet, const sf::ConvexShape& shape)
-{
-	const sf::FloatRect bulletBounds = bullet.shape.getGlobalBounds();
-	const sf::Vector2f bulletCenter(
-		bulletBounds.position.x + bulletBounds.size.x / 2.f,
-		bulletBounds.position.y + bulletBounds.size.y / 2.f);
-	return shape.getGlobalBounds().contains(bulletCenter);
-}
-
 void ProcessBulletNeutralCollisions(
 	std::vector<Bullet>& bullets,
 	std::vector<NeutralShip>& neutrals,
@@ -304,7 +291,7 @@ void ProcessBulletNeutralCollisions(
 				continue;
 			}
 
-			if (!BulletIntersectsConvexShape(bullets[bulletIndex], neutrals[neutralIndex].shape))
+			if (!bullets[bulletIndex].IntersectsConvexShape(neutrals[neutralIndex].shape))
 			{
 				continue;
 			}
@@ -462,25 +449,6 @@ sf::Vector2f GetShipNosePosition(const sf::ConvexShape& ship, const GameContext&
 	return ship.getTransform().transformPoint(sf::Vector2f(context.shipWidth / 2.f, 0.f));
 }
 
-Bullet CreateBulletFromShip(const sf::ConvexShape& ship, const GameContext& context)
-{
-	const sf::Vector2f direction = GetShipForwardDirection(ship, context);
-	const sf::Vector2f nosePosition = GetShipNosePosition(ship, context);
-
-	const float bulletWidth = 2.f * context.scale;
-	const float bulletLength = 5.f * context.scale;
-
-	sf::RectangleShape shape(sf::Vector2f(bulletWidth, bulletLength));
-	shape.setOrigin(sf::Vector2f(bulletWidth / 2.f, bulletLength / 2.f));
-	shape.setPosition(nosePosition + direction * (bulletLength * 0.6f));
-	shape.setFillColor(kColorBullet);
-
-	const float angleDegrees = std::atan2(direction.y, direction.x) * 180.f / 3.14159265f + 90.f;
-	shape.setRotation(sf::degrees(angleDegrees));
-
-	return Bullet{ shape, direction * context.bulletSpeed };
-}
-
 sf::Vector2f CreateOffScreenSpawnPosition(
 	const GameContext& context,
 	float spawnMargin,
@@ -596,7 +564,7 @@ bool ProcessPlayerCollisions(
 
 	for (std::size_t bulletIndex = 0; bulletIndex < bullets.size(); ++bulletIndex)
 	{
-		if (!BulletIntersectsConvexShape(bullets[bulletIndex], playerShip))
+		if (!bullets[bulletIndex].IntersectsConvexShape(playerShip))
 		{
 			continue;
 		}
@@ -965,8 +933,8 @@ void ProcessBulletBulletCollisions(std::vector<Bullet>& bullets)
 
 		for (std::size_t secondIndex = firstIndex + 1; secondIndex < bullets.size(); ++secondIndex)
 		{
-			const sf::FloatRect firstBounds = bullets[firstIndex].shape.getGlobalBounds();
-			const sf::FloatRect secondBounds = bullets[secondIndex].shape.getGlobalBounds();
+			const sf::FloatRect firstBounds = bullets[firstIndex].GetBounds();
+			const sf::FloatRect secondBounds = bullets[secondIndex].GetBounds();
 			if (!RectsIntersect(firstBounds, secondBounds))
 			{
 				continue;
@@ -1001,7 +969,7 @@ void ProcessBulletEnemyCollisions(
 				continue;
 			}
 
-			if (!BulletIntersectsConvexShape(bullets[bulletIndex], enemies[enemyIndex].shape))
+			if (!bullets[bulletIndex].IntersectsConvexShape(enemies[enemyIndex].shape))
 			{
 				continue;
 			}
@@ -1026,10 +994,7 @@ void ProcessBulletSatelliteCollisions(std::vector<Bullet>& bullets, std::vector<
 {
 	for (std::size_t bulletIndex = 0; bulletIndex < bullets.size();)
 	{
-		const sf::FloatRect bulletBounds = bullets[bulletIndex].shape.getGlobalBounds();
-		const sf::Vector2f bulletCenter(
-			bulletBounds.position.x + bulletBounds.size.x / 2.f,
-			bulletBounds.position.y + bulletBounds.size.y / 2.f);
+		const sf::Vector2f bulletCenter = bullets[bulletIndex].GetCenter();
 
 		bool bulletHit = false;
 
@@ -1071,10 +1036,7 @@ void ProcessBulletAsteroidCollisions(
 {
 	for (std::size_t bulletIndex = 0; bulletIndex < bullets.size();)
 	{
-		const sf::FloatRect bulletBounds = bullets[bulletIndex].shape.getGlobalBounds();
-		const sf::Vector2f bulletCenter(
-			bulletBounds.position.x + bulletBounds.size.x / 2.f,
-			bulletBounds.position.y + bulletBounds.size.y / 2.f);
+		const sf::Vector2f bulletCenter = bullets[bulletIndex].GetCenter();
 
 		bool bulletHit = false;
 
@@ -1284,7 +1246,7 @@ void UpdateEnemies(
 			enemy.fireCooldown -= deltaTime;
 			if (enemy.fireCooldown <= 0.f)
 			{
-				bullets.push_back(CreateBulletFromShip(enemy.shape, context));
+				bullets.push_back(Bullet::CreateFromShip(enemy.shape, context));
 				enemy.fireCooldown = enemyFireInterval;
 			}
 			continue;
@@ -1314,7 +1276,7 @@ void UpdateEnemies(
 		enemy.fireCooldown -= deltaTime;
 		if (enemy.fireCooldown <= 0.f)
 		{
-			bullets.push_back(CreateBulletFromShip(enemy.shape, context));
+			bullets.push_back(Bullet::CreateFromShip(enemy.shape, context));
 			enemy.fireCooldown = enemyFireInterval;
 		}
 	}
@@ -1362,29 +1324,7 @@ void UpdateNeutralShips(std::vector<NeutralShip>& neutrals, float deltaTime, con
 	}
 }
 
-void UpdateBullets(std::vector<Bullet>& bullets, float deltaTime, const GameContext& context)
-{
-	const float removeMargin = 40.f * context.scale;
-
-	for (auto& bullet : bullets)
-	{
-		bullet.shape.move(bullet.velocity * deltaTime);
-	}
-
-	bullets.erase(
-		std::remove_if(
-			bullets.begin(),
-			bullets.end(),
-			[&](const Bullet& bullet) {
-				const sf::Vector2f position = bullet.shape.getPosition();
-				return position.x < -removeMargin
-					|| position.x > context.windowWidth + removeMargin
-					|| position.y < -removeMargin
-					|| position.y > context.windowHeight + removeMargin;
-			}),
-		bullets.end());
-}
-} 
+} // namespace
 
 int main()
 {
@@ -1435,7 +1375,7 @@ int main()
 				if (mousePressed->button == sf::Mouse::Button::Left)
 				{
 					UpdatePlayerShipAim(playerShip, window);
-					bullets.push_back(CreateBulletFromShip(playerShip, context));
+					bullets.push_back(Bullet::CreateFromShip(playerShip, context));
 				}
 			}
 			else if (event->is<sf::Event::FocusGained>())
@@ -1535,7 +1475,7 @@ int main()
 		ProcessAsteroidSatelliteCollisions(asteroids, orbitSatellites);
 		ProcessAsteroidEnemyCollisions(asteroids, enemies, context);
 		ProcessAsteroidNeutralCollisions(asteroids, neutralShips, context);
-		UpdateBullets(bullets, deltaTime, context);
+		Bullet::UpdateAll(bullets, deltaTime, context);
 		ProcessBulletBulletCollisions(bullets);
 		ProcessBulletSatelliteCollisions(bullets, orbitSatellites);
 		ProcessBulletEnemyCollisions(bullets, enemies, context);
@@ -1574,7 +1514,7 @@ int main()
 		}
 		for (const auto& bullet : bullets)
 		{
-			window.draw(bullet.shape);
+			bullet.Draw(window);
 		}
 		window.draw(playerShip);
 		window.display();
