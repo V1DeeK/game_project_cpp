@@ -9,18 +9,10 @@
 
 #include "config/Colors.hpp"
 #include "config/GameConstants.hpp"
+#include "app/GameContext.hpp"
 
-struct GameContext
-{
-	float windowWidth = 800.f;
-	float windowHeight = 600.f;
-	float shipWidth = 16.f;
-	float shipHeight = 20.f;
-	float moveSpeed = 250.f;
-	float earthRadius = 80.f;
-	float scale = 1.f;
-	float bulletSpeed = 500.f;
-};
+using game::CreateGameContext;
+using game::GameContext;
 
 struct Asteroid
 {
@@ -76,27 +68,6 @@ using namespace game;
 bool IsMoveKeyPressed(sf::Keyboard::Scancode scancode)
 {
 	return sf::Keyboard::isKeyPressed(scancode);
-}
-
-GameContext CreateGameContext(const sf::VideoMode& desktopMode)
-{
-	GameContext context;
-	context.windowWidth = static_cast<float>(desktopMode.size.x);
-	context.windowHeight = static_cast<float>(desktopMode.size.y);
-	context.scale = std::min(context.windowWidth / 800.f, context.windowHeight / 600.f);
-
-	context.shipWidth = 16.f * context.scale * shipVisualScale;
-	context.shipHeight = 20.f * context.scale * shipVisualScale;
-	context.moveSpeed = 250.f * context.scale;
-	context.earthRadius = 80.f * context.scale;
-	context.bulletSpeed = 500.f * context.scale;
-
-	return context;
-}
-
-sf::Vector2f GetEarthCenter(const GameContext& context)
-{
-	return sf::Vector2f(context.windowWidth / 2.f, context.windowHeight / 2.f);
 }
 
 float GetSatelliteRadius(const GameContext& context)

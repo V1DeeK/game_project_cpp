@@ -18,4 +18,4 @@ inline constexpr sf::Color kColorBullet(255, 220, 50);
 inline constexpr sf::Color kColorHpBackground(90, 20, 20);
 inline constexpr sf::Color kColorHpForeground(0, 200, 0);
 inline constexpr sf::Color kColorHpDamaged(200, 40, 40);
-} // namespace game
+}
