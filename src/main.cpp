@@ -12,6 +12,7 @@
 #include "app/GameContext.hpp"
 #include "collision/Geometry.hpp"
 #include "entities/Bullet.hpp"
+#include "entities/Earth.hpp"
 #include "entities/PlayerShip.hpp"
 #include "entities/Ship.hpp"
 #include "systems/FiringSystem.hpp"
@@ -20,6 +21,7 @@ using game::Bullet;
 using game::CreateGameContext;
 using game::GameContext;
 using game::FiringSystem;
+using game::Earth;
 using game::PlayerShip;
 
 struct Asteroid
@@ -285,17 +287,6 @@ void ProcessBulletNeutralCollisions(
 			++bulletIndex;
 		}
 	}
-}
-
-sf::CircleShape CreateEarth(const GameContext& context)
-{
-	sf::CircleShape earth(context.earthRadius);
-	earth.setOrigin(sf::Vector2f(context.earthRadius, context.earthRadius));
-	earth.setPosition(GetEarthCenter(context));
-	earth.setFillColor(sf::Color(25, 90, 170));
-	earth.setOutlineColor(sf::Color(45, 150, 70));
-	earth.setOutlineThickness(4.f);
-	return earth;
 }
 
 void SetOrbitSatellitePosition(OrbitSatellite& satellite, sf::Vector2f earthCenter)
@@ -1265,9 +1256,8 @@ int main()
 	(void)window.setActive(true);
 	window.requestFocus();
 
-	const sf::Vector2f earthCenter = GetEarthCenter(context);
-
-	sf::CircleShape earth = CreateEarth(context);
+	Earth earth = Earth::Create(context);
+	const sf::Vector2f earthCenter = earth.GetCenter();
 	std::vector<OrbitSatellite> orbitSatellites = CreateOrbitSatellites(context);
 	PlayerShip playerShip = PlayerShip::CreateAtCenter(context);
 
@@ -1404,7 +1394,7 @@ int main()
 		}
 
 		window.clear(sf::Color(10, 10, 25));
-		window.draw(earth);
+		earth.Draw(window);
 		for (const auto& satellite : orbitSatellites)
 		{
 			window.draw(satellite.shape);
