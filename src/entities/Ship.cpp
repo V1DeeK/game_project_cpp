@@ -28,11 +28,6 @@ Ship::Ship(sf::ConvexShape shape)
 {
 }
 
-Ship Ship::CreatePlayerShip(const GameContext& context)
-{
-	return Ship(CreateTriangleShip(context, kColorPlayerShipFill, kColorPlayerShipOutline));
-}
-
 Ship Ship::CreateEnemyShip(const GameContext& context)
 {
 	return Ship(CreateTriangleShip(context, kColorEnemyFill, kColorEnemyOutline));

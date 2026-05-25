@@ -14,7 +14,6 @@ public:
 	Ship() = default;
 	explicit Ship(sf::ConvexShape shape);
 
-	static Ship CreatePlayerShip(const GameContext& context);
 	static Ship CreateEnemyShip(const GameContext& context);
 
 	static void RotateToward(sf::ConvexShape& shape, sf::Vector2f shipCenter, sf::Vector2f targetPoint);

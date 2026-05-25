@@ -12,6 +12,7 @@
 #include "app/GameContext.hpp"
 #include "collision/Geometry.hpp"
 #include "entities/Bullet.hpp"
+#include "entities/PlayerShip.hpp"
 #include "entities/Ship.hpp"
 #include "systems/FiringSystem.hpp"
 
@@ -19,7 +20,7 @@ using game::Bullet;
 using game::CreateGameContext;
 using game::GameContext;
 using game::FiringSystem;
-using game::Ship;
+using game::PlayerShip;
 
 struct Asteroid
 {
@@ -65,11 +66,6 @@ struct EnemyShip
 namespace
 {
 using namespace game;
-
-bool IsMoveKeyPressed(sf::Keyboard::Scancode scancode)
-{
-	return sf::Keyboard::isKeyPressed(scancode);
-}
 
 float GetSatelliteRadius(const GameContext& context)
 {
@@ -454,7 +450,7 @@ void UpdateAsteroidDamageVisual(Asteroid& asteroid)
 
 bool ProcessAsteroidPlayerCollision(
 	std::vector<Asteroid>& asteroids,
-	const Ship& playerShip,
+	const PlayerShip& playerShip,
 	const GameContext& context)
 {
 	const sf::FloatRect playerBounds = playerShip.GetBounds();
@@ -480,7 +476,7 @@ bool ProcessAsteroidPlayerCollision(
 }
 
 bool ProcessPlayerCollisions(
-	const Ship& playerShip,
+	const PlayerShip& playerShip,
 	std::vector<Asteroid>& asteroids,
 	std::vector<EnemyShip>& enemies,
 	std::vector<NeutralShip>& neutrals,
@@ -1147,17 +1143,6 @@ void KeepInsideScreen(sf::Shape& shape, const GameContext& context, sf::Vector2f
 	}
 }
 
-sf::Vector2f GetMouseWorldPosition(const sf::RenderWindow& window)
-{
-	const sf::Vector2i mousePixel = sf::Mouse::getPosition(window);
-	return window.mapPixelToCoords(mousePixel);
-}
-
-void UpdatePlayerShipAim(Ship& ship, const sf::RenderWindow& window)
-{
-	ship.RotateToward(GetMouseWorldPosition(window));
-}
-
 void UpdateEnemies(
 	std::vector<EnemyShip>& enemies,
 	std::vector<Bullet>& bullets,
@@ -1284,8 +1269,7 @@ int main()
 
 	sf::CircleShape earth = CreateEarth(context);
 	std::vector<OrbitSatellite> orbitSatellites = CreateOrbitSatellites(context);
-	Ship playerShip = Ship::CreatePlayerShip(context);
-	playerShip.SetPosition(sf::Vector2f(context.windowWidth / 2.f, context.windowHeight / 2.f));
+	PlayerShip playerShip = PlayerShip::CreateAtCenter(context);
 
 	std::mt19937 rng(std::random_device{}());
 	std::vector<Asteroid> asteroids = CreateInitialAsteroids(context, rng);
@@ -1318,7 +1302,7 @@ int main()
 				window.requestFocus();
 				if (mousePressed->button == sf::Mouse::Button::Left)
 				{
-					UpdatePlayerShipAim(playerShip, window);
+					playerShip.UpdateAim(window);
 					bullets.push_back(FiringSystem::CreateBulletFromShip(playerShip, context));
 				}
 			}
@@ -1379,27 +1363,9 @@ int main()
 			}
 		}
 
-		sf::Vector2f offset;
-		if (moveLeft || IsMoveKeyPressed(sf::Keyboard::Scancode::A))
-		{
-			offset.x -= context.moveSpeed * deltaTime;
-		}
-		if (moveRight || IsMoveKeyPressed(sf::Keyboard::Scancode::D))
-		{
-			offset.x += context.moveSpeed * deltaTime;
-		}
-		if (moveUp || IsMoveKeyPressed(sf::Keyboard::Scancode::W))
-		{
-			offset.y -= context.moveSpeed * deltaTime;
-		}
-		if (moveDown || IsMoveKeyPressed(sf::Keyboard::Scancode::S))
-		{
-			offset.y += context.moveSpeed * deltaTime;
-		}
-
-		playerShip.Move(offset);
-		KeepInsideScreen(playerShip.GetShape(), context, nullptr);
-		UpdatePlayerShipAim(playerShip, window);
+		playerShip.ApplyMovement(moveLeft, moveRight, moveUp, moveDown, deltaTime, context);
+		playerShip.ClampToScreen(context);
+		playerShip.UpdateAim(window);
 
 		UpdateAsteroids(asteroids, deltaTime, context, rng);
 		ProcessAsteroidMerges(asteroids);
