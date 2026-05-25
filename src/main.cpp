@@ -13,15 +13,19 @@
 #include "collision/Geometry.hpp"
 #include "entities/Bullet.hpp"
 #include "entities/Earth.hpp"
+#include "entities/Satellite.hpp"
 #include "entities/PlayerShip.hpp"
 #include "entities/Ship.hpp"
 #include "systems/FiringSystem.hpp"
+#include "systems/SatelliteOrbitSystem.hpp"
 
 using game::Bullet;
 using game::CreateGameContext;
 using game::GameContext;
 using game::FiringSystem;
+using game::SatelliteOrbitSystem;
 using game::Earth;
+using game::Satellite;
 using game::PlayerShip;
 
 struct Asteroid
@@ -31,16 +35,6 @@ struct Asteroid
 	int hp = 2;
 	int maxHp = 2;
 	int mergeCount = 1;
-};
-
-struct OrbitSatellite
-{
-	sf::CircleShape shape;
-	float angle = 0.f;
-	float angularSpeed = 0.f;
-	float orbitRadius = 0.f;
-	int hp = 2;
-	int maxHp = 2;
 };
 
 struct NeutralShip
@@ -71,7 +65,7 @@ using namespace game;
 
 float GetSatelliteRadius(const GameContext& context)
 {
-	return 5.f * context.scale;
+	return Satellite::GetRadius(context);
 }
 
 sf::Vector2f GetNeutralShipSize(const GameContext& context)
@@ -289,99 +283,6 @@ void ProcessBulletNeutralCollisions(
 	}
 }
 
-void SetOrbitSatellitePosition(OrbitSatellite& satellite, sf::Vector2f earthCenter)
-{
-	const float x = earthCenter.x + std::cos(satellite.angle) * satellite.orbitRadius;
-	const float y = earthCenter.y + std::sin(satellite.angle) * satellite.orbitRadius;
-	satellite.shape.setPosition(sf::Vector2f(x, y));
-}
-
-std::vector<OrbitSatellite> CreateOrbitSatellites(const GameContext& context)
-{
-	const float satelliteRadius = GetSatelliteRadius(context);
-	const float orbitRadius = context.earthRadius + 24.f * context.scale;
-	const sf::Vector2f earthCenter = GetEarthCenter(context);
-	const float angleStep = 6.2831853f / static_cast<float>(orbitSatelliteCount);
-
-	std::vector<OrbitSatellite> satellites;
-	satellites.reserve(orbitSatelliteCount);
-
-	for (int i = 0; i < orbitSatelliteCount; ++i)
-	{
-		OrbitSatellite satellite;
-		satellite.angle = angleStep * static_cast<float>(i);
-		satellite.angularSpeed = orbitAngularSpeed;
-		satellite.orbitRadius = orbitRadius;
-		satellite.hp = satelliteHitPoints;
-		satellite.maxHp = satelliteHitPoints;
-		satellite.shape = sf::CircleShape(satelliteRadius);
-		satellite.shape.setOrigin(sf::Vector2f(satelliteRadius, satelliteRadius));
-		satellite.shape.setFillColor(kColorSatelliteFill);
-		satellite.shape.setOutlineColor(kColorSatelliteOutline);
-		satellite.shape.setOutlineThickness(1.f);
-		SetOrbitSatellitePosition(satellite, earthCenter);
-		satellites.push_back(satellite);
-	}
-
-	return satellites;
-}
-
-void ClampCircleToScreen(sf::CircleShape& circle, const GameContext& context)
-{
-	const float radius = circle.getRadius();
-	sf::Vector2f position = circle.getPosition();
-	position.x = std::clamp(position.x, radius, context.windowWidth - radius);
-	position.y = std::clamp(position.y, radius, context.windowHeight - radius);
-	circle.setPosition(position);
-}
-
-void UpdateOrbitSatellites(
-	std::vector<OrbitSatellite>& satellites,
-	float deltaTime,
-	sf::Vector2f earthCenter,
-	const GameContext& context)
-{
-	for (auto& satellite : satellites)
-	{
-		satellite.angle += satellite.angularSpeed * deltaTime;
-		SetOrbitSatellitePosition(satellite, earthCenter);
-		ClampCircleToScreen(satellite.shape, context);
-	}
-}
-
-void DrawSatelliteHpBar(sf::RenderWindow& window, const OrbitSatellite& satellite, const GameContext& context)
-{
-	const float radius = satellite.shape.getRadius();
-	const sf::Vector2f center = satellite.shape.getPosition();
-	const float barWidth = 18.f * context.scale;
-	const float barHeight = 3.f * context.scale;
-	const sf::Vector2f barPosition(center.x - barWidth / 2.f, center.y - radius - 7.f * context.scale);
-
-	sf::RectangleShape background(sf::Vector2f(barWidth, barHeight));
-	background.setPosition(barPosition);
-	background.setFillColor(kColorHpBackground);
-
-	const float hpFraction = static_cast<float>(satellite.hp) / static_cast<float>(satellite.maxHp);
-	const float foregroundWidth = barWidth * hpFraction;
-
-	sf::RectangleShape foreground(sf::Vector2f(foregroundWidth, barHeight));
-	foreground.setPosition(barPosition);
-	if (satellite.hp == satellite.maxHp)
-	{
-		foreground.setFillColor(kColorHpForeground);
-	}
-	else if (satellite.hp > 0)
-	{
-		foreground.setFillColor(kColorHpDamaged);
-	}
-
-	window.draw(background);
-	if (foregroundWidth > 0.f)
-	{
-		window.draw(foreground);
-	}
-}
-
 sf::Vector2f CreateOffScreenSpawnPosition(
 	const GameContext& context,
 	float spawnMargin,
@@ -471,7 +372,7 @@ bool ProcessPlayerCollisions(
 	std::vector<Asteroid>& asteroids,
 	std::vector<EnemyShip>& enemies,
 	std::vector<NeutralShip>& neutrals,
-	std::vector<OrbitSatellite>& satellites,
+	std::vector<Satellite>& satellites,
 	std::vector<Bullet>& bullets,
 	const GameContext& context)
 {
@@ -479,16 +380,12 @@ bool ProcessPlayerCollisions(
 
 	for (std::size_t satelliteIndex = 0; satelliteIndex < satellites.size(); ++satelliteIndex)
 	{
-		const sf::Vector2f satelliteCenter = satellites[satelliteIndex].shape.getPosition();
-		const float satelliteRadius = satellites[satelliteIndex].shape.getRadius();
-
-		if (!CircleIntersectsRect(satelliteCenter, satelliteRadius, playerBounds))
+		if (!satellites[satelliteIndex].IntersectsRect(playerBounds))
 		{
 			continue;
 		}
 
-		satellites[satelliteIndex].hp -= 1;
-		if (satellites[satelliteIndex].hp <= 0)
+		if (satellites[satelliteIndex].TakeDamage(1))
 		{
 			satellites.erase(satellites.begin() + static_cast<std::ptrdiff_t>(satelliteIndex));
 		}
@@ -689,7 +586,7 @@ void ProcessAsteroidEnemyCollisions(
 	}
 }
 
-void ProcessAsteroidSatelliteCollisions(std::vector<Asteroid>& asteroids, std::vector<OrbitSatellite>& satellites)
+void ProcessAsteroidSatelliteCollisions(std::vector<Asteroid>& asteroids, std::vector<Satellite>& satellites)
 {
 	for (std::size_t asteroidIndex = 0; asteroidIndex < asteroids.size();)
 	{
@@ -700,10 +597,7 @@ void ProcessAsteroidSatelliteCollisions(std::vector<Asteroid>& asteroids, std::v
 
 		for (std::size_t satelliteIndex = 0; satelliteIndex < satellites.size(); ++satelliteIndex)
 		{
-			const sf::Vector2f satelliteCenter = satellites[satelliteIndex].shape.getPosition();
-			const float satelliteRadius = satellites[satelliteIndex].shape.getRadius();
-
-			if (!CirclesIntersect(asteroidCenter, asteroidRadius, satelliteCenter, satelliteRadius))
+			if (!satellites[satelliteIndex].IntersectsCircle(asteroidCenter, asteroidRadius))
 			{
 				continue;
 			}
@@ -719,33 +613,6 @@ void ProcessAsteroidSatelliteCollisions(std::vector<Asteroid>& asteroids, std::v
 			++asteroidIndex;
 		}
 	}
-}
-
-std::optional<sf::Vector2f> FindNearestSatellitePosition(
-	sf::Vector2f fromPosition,
-	const std::vector<OrbitSatellite>& satellites)
-{
-	if (satellites.empty())
-	{
-		return std::nullopt;
-	}
-
-	std::optional<sf::Vector2f> nearestPosition;
-	float nearestDistanceSquared = std::numeric_limits<float>::max();
-
-	for (const auto& satellite : satellites)
-	{
-		const sf::Vector2f satellitePosition = satellite.shape.getPosition();
-		const sf::Vector2f delta = satellitePosition - fromPosition;
-		const float distanceSquared = delta.x * delta.x + delta.y * delta.y;
-		if (distanceSquared < nearestDistanceSquared)
-		{
-			nearestDistanceSquared = distanceSquared;
-			nearestPosition = satellitePosition;
-		}
-	}
-
-	return nearestPosition;
 }
 
 void ProcessEnemyNeutralCollisions(
@@ -787,7 +654,7 @@ void ProcessEnemyNeutralCollisions(
 
 void ProcessEnemySatelliteCollisions(
 	std::vector<EnemyShip>& enemies,
-	std::vector<OrbitSatellite>& satellites,
+	std::vector<Satellite>& satellites,
 	const GameContext& context)
 {
 	for (std::size_t enemyIndex = 0; enemyIndex < enemies.size();)
@@ -803,10 +670,7 @@ void ProcessEnemySatelliteCollisions(
 
 		for (std::size_t satelliteIndex = 0; satelliteIndex < satellites.size(); ++satelliteIndex)
 		{
-			const sf::Vector2f satelliteCenter = satellites[satelliteIndex].shape.getPosition();
-			const float satelliteRadius = satellites[satelliteIndex].shape.getRadius();
-
-			if (!CircleIntersectsRect(satelliteCenter, satelliteRadius, enemyBounds))
+			if (!satellites[satelliteIndex].IntersectsRect(enemyBounds))
 			{
 				continue;
 			}
@@ -923,7 +787,7 @@ void ProcessBulletEnemyCollisions(
 	}
 }
 
-void ProcessBulletSatelliteCollisions(std::vector<Bullet>& bullets, std::vector<OrbitSatellite>& satellites)
+void ProcessBulletSatelliteCollisions(std::vector<Bullet>& bullets, std::vector<Satellite>& satellites)
 {
 	for (std::size_t bulletIndex = 0; bulletIndex < bullets.size();)
 	{
@@ -933,16 +797,12 @@ void ProcessBulletSatelliteCollisions(std::vector<Bullet>& bullets, std::vector<
 
 		for (std::size_t satelliteIndex = 0; satelliteIndex < satellites.size(); ++satelliteIndex)
 		{
-			const sf::Vector2f satelliteCenter = satellites[satelliteIndex].shape.getPosition();
-			const float satelliteRadius = satellites[satelliteIndex].shape.getRadius();
-
-			if (!CircleContainsPoint(satelliteCenter, satelliteRadius, bulletCenter))
+			if (!satellites[satelliteIndex].ContainsPoint(bulletCenter))
 			{
 				continue;
 			}
 
-			satellites[satelliteIndex].hp -= 1;
-			if (satellites[satelliteIndex].hp <= 0)
+			if (satellites[satelliteIndex].TakeDamage(1))
 			{
 				satellites.erase(satellites.begin() + static_cast<std::ptrdiff_t>(satelliteIndex));
 			}
@@ -1137,7 +997,7 @@ void KeepInsideScreen(sf::Shape& shape, const GameContext& context, sf::Vector2f
 void UpdateEnemies(
 	std::vector<EnemyShip>& enemies,
 	std::vector<Bullet>& bullets,
-	const std::vector<OrbitSatellite>& satellites,
+	const std::vector<Satellite>& satellites,
 	float deltaTime,
 	sf::Vector2f earthCenter,
 	sf::Vector2f playerPosition,
@@ -1184,7 +1044,7 @@ void UpdateEnemies(
 			continue;
 		}
 
-		const std::optional<sf::Vector2f> satelliteTarget = FindNearestSatellitePosition(currentPosition, satellites);
+		const std::optional<sf::Vector2f> satelliteTarget = Satellite::FindNearestPosition(currentPosition, satellites);
 		if (!satelliteTarget.has_value())
 		{
 			Ship::RotateToward(enemy.shape, currentPosition, earthCenter);
@@ -1258,7 +1118,7 @@ int main()
 
 	Earth earth = Earth::Create(context);
 	const sf::Vector2f earthCenter = earth.GetCenter();
-	std::vector<OrbitSatellite> orbitSatellites = CreateOrbitSatellites(context);
+	std::vector<Satellite> orbitSatellites = SatelliteOrbitSystem::CreateOrbitSatellites(context);
 	PlayerShip playerShip = PlayerShip::CreateAtCenter(context);
 
 	std::mt19937 rng(std::random_device{}());
@@ -1360,7 +1220,7 @@ int main()
 		UpdateAsteroids(asteroids, deltaTime, context, rng);
 		ProcessAsteroidMerges(asteroids);
 		UpdateNeutralShips(neutralShips, deltaTime, context, rng);
-		UpdateOrbitSatellites(orbitSatellites, deltaTime, earthCenter, context);
+		SatelliteOrbitSystem::UpdateOrbitSatellites(orbitSatellites, deltaTime, earthCenter, context);
 		UpdateEnemies(
 			enemies,
 			bullets,
@@ -1397,8 +1257,8 @@ int main()
 		earth.Draw(window);
 		for (const auto& satellite : orbitSatellites)
 		{
-			window.draw(satellite.shape);
-			DrawSatelliteHpBar(window, satellite, context);
+			satellite.Draw(window);
+			satellite.DrawHpBar(window, context);
 		}
 		for (const auto& asteroid : asteroids)
 		{
