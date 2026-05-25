@@ -10,11 +10,13 @@
 
 namespace game
 {
+class FiringSystem;
+
 class Bullet
 {
-public:
-	static Bullet CreateFromShip(const sf::ConvexShape& ship, const GameContext& context);
+	friend class FiringSystem;
 
+public:
 	static void UpdateAll(std::vector<Bullet>& bullets, float deltaTime, const GameContext& context);
 
 	static void RemoveOffScreen(std::vector<Bullet>& bullets, const GameContext& context);

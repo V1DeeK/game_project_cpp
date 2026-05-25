@@ -1,34 +1,9 @@
 #include "entities/Bullet.hpp"
 
 #include <algorithm>
-#include <cmath>
-
-#include "config/Colors.hpp"
-#include "entities/Ship.hpp"
 
 namespace game
 {
-Bullet Bullet::CreateFromShip(const sf::ConvexShape& ship, const GameContext& context)
-{
-	const sf::Vector2f direction = Ship::GetForwardDirection(ship, context);
-	const sf::Vector2f nosePosition = Ship::GetNosePosition(ship, context);
-
-	const float bulletWidth = 2.f * context.scale;
-	const float bulletLength = 5.f * context.scale;
-
-	Bullet bullet;
-	bullet.m_shape = sf::RectangleShape(sf::Vector2f(bulletWidth, bulletLength));
-	bullet.m_shape.setOrigin(sf::Vector2f(bulletWidth / 2.f, bulletLength / 2.f));
-	bullet.m_shape.setPosition(nosePosition + direction * (bulletLength * 0.6f));
-	bullet.m_shape.setFillColor(kColorBullet);
-
-	const float angleDegrees = std::atan2(direction.y, direction.x) * 180.f / 3.14159265f + 90.f;
-	bullet.m_shape.setRotation(sf::degrees(angleDegrees));
-	bullet.m_velocity = direction * context.bulletSpeed;
-
-	return bullet;
-}
-
 void Bullet::UpdateAll(std::vector<Bullet>& bullets, float deltaTime, const GameContext& context)
 {
 	for (auto& bullet : bullets)

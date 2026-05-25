@@ -13,10 +13,12 @@
 #include "collision/Geometry.hpp"
 #include "entities/Bullet.hpp"
 #include "entities/Ship.hpp"
+#include "systems/FiringSystem.hpp"
 
 using game::Bullet;
 using game::CreateGameContext;
 using game::GameContext;
+using game::FiringSystem;
 using game::Ship;
 
 struct Asteroid
@@ -1188,7 +1190,7 @@ void UpdateEnemies(
 			enemy.fireCooldown -= deltaTime;
 			if (enemy.fireCooldown <= 0.f)
 			{
-				bullets.push_back(Bullet::CreateFromShip(enemy.shape, context));
+				bullets.push_back(FiringSystem::CreateBulletFromShip(enemy.shape, context));
 				enemy.fireCooldown = enemyFireInterval;
 			}
 			continue;
@@ -1218,7 +1220,7 @@ void UpdateEnemies(
 		enemy.fireCooldown -= deltaTime;
 		if (enemy.fireCooldown <= 0.f)
 		{
-			bullets.push_back(Bullet::CreateFromShip(enemy.shape, context));
+			bullets.push_back(FiringSystem::CreateBulletFromShip(enemy.shape, context));
 			enemy.fireCooldown = enemyFireInterval;
 		}
 	}
@@ -1317,7 +1319,7 @@ int main()
 				if (mousePressed->button == sf::Mouse::Button::Left)
 				{
 					UpdatePlayerShipAim(playerShip, window);
-					bullets.push_back(Bullet::CreateFromShip(playerShip.GetShape(), context));
+					bullets.push_back(FiringSystem::CreateBulletFromShip(playerShip, context));
 				}
 			}
 			else if (event->is<sf::Event::FocusGained>())
