@@ -16,10 +16,11 @@ namespace game
 Game::Game()
 	: m_context(CreateGameContext(sf::VideoMode::getDesktopMode()))
 	, m_window(sf::VideoMode::getDesktopMode(), "GAME", sf::State::Fullscreen)
+	, m_rng(std::random_device{}())
+	, m_startScreen(m_context, m_rng)
 	, m_earth(Earth::Create(m_context))
 	, m_orbitSatellites(SatelliteOrbitSystem::CreateOrbitSatellites(m_context))
 	, m_playerShip(PlayerShip::CreateAtCenter(m_context))
-	, m_rng(std::random_device{}())
 	, m_asteroids(Asteroid::CreateInitialFleet(m_context, m_rng))
 	, m_neutralShips(NeutralShip::CreateInitialFleet(m_context, m_rng))
 {
@@ -49,6 +50,21 @@ void Game::ProcessEvents()
 {
 	while (const std::optional event = m_window.pollEvent())
 	{
+		if (m_mode == Mode::StartScreen)
+		{
+			const StartScreenAction action = m_startScreen.ProcessEvent(m_window, *event);
+			if (action == StartScreenAction::Exit)
+			{
+				m_window.close();
+			}
+			else if (action == StartScreenAction::StartGame)
+			{
+				ResetPlayingState();
+				m_mode = Mode::Playing;
+			}
+			continue;
+		}
+
 		if (m_playerInput.ProcessEvent(m_window, *event, m_playerShip, m_bullets, m_context))
 		{
 			m_window.close();
@@ -58,6 +74,12 @@ void Game::ProcessEvents()
 
 void Game::Update(float deltaTime)
 {
+	if (m_mode == Mode::StartScreen)
+	{
+		m_startScreen.Update(deltaTime, m_context, m_rng);
+		return;
+	}
+
 	m_playerInput.UpdatePlayer(m_playerShip, m_window, deltaTime, m_context);
 
 	Asteroid::UpdateAll(m_asteroids, deltaTime, m_context, m_rng);
@@ -90,6 +112,12 @@ void Game::Update(float deltaTime)
 
 void Game::Render()
 {
+	if (m_mode == Mode::StartScreen)
+	{
+		m_startScreen.Render(m_window, m_context);
+		return;
+	}
+
 	m_window.clear(kColorBackgroundClear);
 	m_earth.Draw(m_window);
 	for (const auto& satellite : m_orbitSatellites)
@@ -115,5 +143,20 @@ void Game::Render()
 	}
 	m_playerShip.Draw(m_window);
 	m_window.display();
+}
+
+void Game::ResetPlayingState()
+{
+	m_earth = Earth::Create(m_context);
+	m_earthCenter = m_earth.GetCenter();
+	m_orbitSatellites = SatelliteOrbitSystem::CreateOrbitSatellites(m_context);
+	m_playerShip = PlayerShip::CreateAtCenter(m_context);
+
+	m_asteroids = Asteroid::CreateInitialFleet(m_context, m_rng);
+	m_neutralShips = NeutralShip::CreateInitialFleet(m_context, m_rng);
+	m_enemies.clear();
+	m_bullets.clear();
+	m_enemies.reserve(static_cast<std::size_t>(initialEnemyCapacity));
+	m_bullets.reserve(static_cast<std::size_t>(initialBulletCapacity));
 }
 } // namespace game

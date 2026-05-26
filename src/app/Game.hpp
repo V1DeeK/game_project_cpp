@@ -15,6 +15,7 @@
 #include "entities/PlayerShip.hpp"
 #include "entities/Satellite.hpp"
 #include "input/PlayerInput.hpp"
+#include "ui/StartScreen.hpp"
 
 namespace game
 {
@@ -25,6 +26,14 @@ public:
 	void Run();
 
 private:
+	enum class Mode
+	{
+		StartScreen,
+		Playing,
+	};
+
+	void ResetPlayingState();
+
 	void ProcessEvents();
 	void Update(float deltaTime);
 	void Render();
@@ -33,13 +42,17 @@ private:
 	GameContext m_context;
 	sf::Clock m_clock;
 
+	Mode m_mode = Mode::StartScreen;
+
+	std::mt19937 m_rng;
+	StartScreen m_startScreen;
+
 	Earth m_earth;
 	sf::Vector2f m_earthCenter;
 	std::vector<Satellite> m_orbitSatellites;
 	PlayerShip m_playerShip;
 	PlayerInput m_playerInput;
 
-	std::mt19937 m_rng;
 	std::vector<Asteroid> m_asteroids;
 	std::vector<NeutralShip> m_neutralShips;
 	std::vector<EnemyShip> m_enemies;
