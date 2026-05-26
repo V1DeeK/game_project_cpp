@@ -11,16 +11,16 @@ namespace
 {
 sf::Vector2f CreateSpawnPositionFromEdge(int edge, const game::GameContext& context, float spawnMargin, std::mt19937& rng)
 {
-	std::uniform_real_distribution<float> positionX(0.f, context.windowWidth);
-	std::uniform_real_distribution<float> positionY(0.f, context.windowHeight);
+	std::uniform_real_distribution<float> positionX(game::screenOrigin, context.windowWidth);
+	std::uniform_real_distribution<float> positionY(game::screenOrigin, context.windowHeight);
 
 	switch (edge)
 	{
-	case 0:
+	case game::screenEdgeTop:
 		return sf::Vector2f(positionX(rng), -spawnMargin);
-	case 1:
+	case game::screenEdgeRight:
 		return sf::Vector2f(context.windowWidth + spawnMargin, positionY(rng));
-	case 2:
+	case game::screenEdgeBottom:
 		return sf::Vector2f(positionX(rng), context.windowHeight + spawnMargin);
 	default:
 		return sf::Vector2f(-spawnMargin, positionY(rng));
@@ -36,23 +36,25 @@ void SpawnSystem::SpawnEnemiesFromAllSides(
 	sf::Vector2f earthCenter,
 	std::mt19937& rng)
 {
-	const float spawnMargin = std::max(context.shipWidth, context.shipHeight) + 40.f * context.scale;
+	const float spawnMargin = std::max(context.shipWidth, context.shipHeight) + offScreenSpawnMarginExtra * context.scale;
 
-	for (int enemyIndex = 0; enemyIndex < enemySpawnCount; ++enemyIndex)
+	for (int enemyIndex = hitPointsDepleted; enemyIndex < enemySpawnCount; ++enemyIndex)
 	{
 		const int edge = enemyIndex;
 		const sf::Vector2f spawnPosition = CreateSpawnPositionFromEdge(edge, context, spawnMargin, rng);
 
 		const FiringSlotAssignment slot = FiringRing::FindNearestSlot(spawnPosition, earthCenter, context, enemies);
 
-		std::uniform_int_distribution<int> behaviorDist(0, 1);
+		std::uniform_int_distribution<int> behaviorDist(enemyBehaviorRandomMin, enemyBehaviorRandomMax);
 
 		EnemyShip enemy(Ship::CreateEnemyShip(context));
 		enemy.SetPosition(spawnPosition);
 		enemy.m_targetRingIndex = slot.ringIndex;
 		enemy.m_targetPointIndex = slot.pointIndex;
 		enemy.m_targetPosition = FiringRing::GetPointPosition(earthCenter, context, slot.ringIndex, slot.pointIndex);
-		enemy.m_behavior = behaviorDist(rng) == 0 ? EnemyBehavior::AttackSatellites : EnemyBehavior::HuntPlayer;
+		enemy.m_behavior = behaviorDist(rng) == enemyBehaviorAttackSatellitesRoll
+			? EnemyBehavior::AttackSatellites
+			: EnemyBehavior::HuntPlayer;
 		enemy.RotateTowardFromPosition(spawnPosition, earthCenter);
 		enemies.push_back(enemy);
 	}

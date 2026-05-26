@@ -9,6 +9,7 @@
 #include <SFML/System/Vector2.hpp>
 
 #include "app/GameContext.hpp"
+#include "config/GameConstants.hpp"
 
 namespace game
 {
@@ -42,8 +43,8 @@ private:
 
 	sf::CircleShape m_shape;
 	sf::Vector2f m_velocity;
-	int m_hp = 0;
-	int m_maxHp = 0;
-	int m_mergeCount = 1;
+	int m_hp = initialHitPoints;
+	int m_maxHp = initialHitPoints;
+	int m_mergeCount = initialMergeCount;
 };
 } // namespace game

@@ -12,14 +12,14 @@ namespace game
 std::vector<Satellite> SatelliteOrbitSystem::CreateOrbitSatellites(const GameContext& context)
 {
 	const float satelliteRadius = Satellite::GetRadius(context);
-	const float orbitRadius = context.earthRadius + 24.f * context.scale;
+	const float orbitRadius = context.earthRadius + satelliteOrbitOffsetFromEarth * context.scale;
 	const sf::Vector2f earthCenter = GetEarthCenter(context);
-	const float angleStep = 6.2831853f / static_cast<float>(orbitSatelliteCount);
+	const float angleStep = twoPi / static_cast<float>(orbitSatelliteCount);
 
 	std::vector<Satellite> satellites;
 	satellites.reserve(orbitSatelliteCount);
 
-	for (int i = 0; i < orbitSatelliteCount; ++i)
+	for (int i = hitPointsDepleted; i < orbitSatelliteCount; ++i)
 	{
 		Satellite satellite;
 		satellite.m_angle = angleStep * static_cast<float>(i);
@@ -31,7 +31,7 @@ std::vector<Satellite> SatelliteOrbitSystem::CreateOrbitSatellites(const GameCon
 		satellite.m_shape.setOrigin(sf::Vector2f(satelliteRadius, satelliteRadius));
 		satellite.m_shape.setFillColor(kColorSatelliteFill);
 		satellite.m_shape.setOutlineColor(kColorSatelliteOutline);
-		satellite.m_shape.setOutlineThickness(1.f);
+		satellite.m_shape.setOutlineThickness(defaultOutlineThickness);
 		satellite.SetOrbitPosition(earthCenter);
 		satellites.push_back(satellite);
 	}

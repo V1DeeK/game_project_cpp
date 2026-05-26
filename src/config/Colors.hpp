@@ -18,4 +18,9 @@ inline constexpr sf::Color kColorBullet(255, 220, 50);
 inline constexpr sf::Color kColorHpBackground(90, 20, 20);
 inline constexpr sf::Color kColorHpForeground(0, 200, 0);
 inline constexpr sf::Color kColorHpDamaged(200, 40, 40);
-}
+inline constexpr sf::Color kColorEarthFill(25, 90, 170);
+inline constexpr sf::Color kColorEarthOutline(45, 150, 70);
+inline constexpr sf::Color kColorAsteroidDamaged(200, 130, 70);
+inline constexpr sf::Color kColorBackgroundClear(10, 10, 25);
+} // namespace game
+

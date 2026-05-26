@@ -1,6 +1,7 @@
 #include "collision/CollisionSystem.hpp"
 
 #include "collision/Geometry.hpp"
+#include "config/GameConstants.hpp"
 #include "systems/SpawnSystem.hpp"
 
 namespace
@@ -12,7 +13,7 @@ bool ProcessAsteroidPlayerCollision(
 {
 	const sf::FloatRect playerBounds = playerShip.GetBounds();
 
-	for (std::size_t asteroidIndex = 0; asteroidIndex < asteroids.size(); ++asteroidIndex)
+	for (std::size_t asteroidIndex = game::hitPointsDepleted; asteroidIndex < asteroids.size(); ++asteroidIndex)
 	{
 		if (!asteroids[asteroidIndex].IsOnScreen(context))
 		{
@@ -37,11 +38,11 @@ void ProcessBulletNeutralCollisions(
 	sf::Vector2f earthCenter,
 	std::mt19937& rng)
 {
-	for (std::size_t bulletIndex = 0; bulletIndex < bullets.size();)
+	for (std::size_t bulletIndex = game::hitPointsDepleted; bulletIndex < bullets.size();)
 	{
 		bool bulletHit = false;
 
-		for (std::size_t neutralIndex = 0; neutralIndex < neutrals.size(); ++neutralIndex)
+		for (std::size_t neutralIndex = game::hitPointsDepleted; neutralIndex < neutrals.size(); ++neutralIndex)
 		{
 			if (!neutrals[neutralIndex].IsOnScreen(context))
 			{
@@ -81,21 +82,21 @@ bool ProcessPlayerCollisions(
 {
 	const sf::FloatRect playerBounds = playerShip.GetBounds();
 
-	for (std::size_t satelliteIndex = 0; satelliteIndex < satellites.size(); ++satelliteIndex)
+	for (std::size_t satelliteIndex = game::hitPointsDepleted; satelliteIndex < satellites.size(); ++satelliteIndex)
 	{
 		if (!satellites[satelliteIndex].IntersectsRect(playerBounds))
 		{
 			continue;
 		}
 
-		if (satellites[satelliteIndex].TakeDamage(1))
+		if (satellites[satelliteIndex].TakeDamage(game::collisionDamage))
 		{
 			satellites.erase(satellites.begin() + static_cast<std::ptrdiff_t>(satelliteIndex));
 		}
 		return false;
 	}
 
-	for (std::size_t bulletIndex = 0; bulletIndex < bullets.size(); ++bulletIndex)
+	for (std::size_t bulletIndex = game::hitPointsDepleted; bulletIndex < bullets.size(); ++bulletIndex)
 	{
 		if (!bullets[bulletIndex].IntersectsConvexShape(playerShip.GetShape()))
 		{
@@ -111,7 +112,7 @@ bool ProcessPlayerCollisions(
 		return true;
 	}
 
-	for (std::size_t enemyIndex = 0; enemyIndex < enemies.size();)
+	for (std::size_t enemyIndex = game::hitPointsDepleted; enemyIndex < enemies.size();)
 	{
 		if (!enemies[enemyIndex].IsOnScreen(context))
 		{
@@ -129,7 +130,7 @@ bool ProcessPlayerCollisions(
 		return true;
 	}
 
-	for (std::size_t neutralIndex = 0; neutralIndex < neutrals.size();)
+	for (std::size_t neutralIndex = game::hitPointsDepleted; neutralIndex < neutrals.size();)
 	{
 		if (!neutrals[neutralIndex].IsOnScreen(context))
 		{
@@ -155,7 +156,7 @@ void ProcessAsteroidNeutralCollisions(
 	std::vector<game::NeutralShip>& neutrals,
 	const game::GameContext& context)
 {
-	for (std::size_t asteroidIndex = 0; asteroidIndex < asteroids.size();)
+	for (std::size_t asteroidIndex = game::hitPointsDepleted; asteroidIndex < asteroids.size();)
 	{
 		bool asteroidDestroyed = false;
 
@@ -165,7 +166,7 @@ void ProcessAsteroidNeutralCollisions(
 			continue;
 		}
 
-		for (std::size_t neutralIndex = 0; neutralIndex < neutrals.size(); ++neutralIndex)
+		for (std::size_t neutralIndex = game::hitPointsDepleted; neutralIndex < neutrals.size(); ++neutralIndex)
 		{
 			if (!neutrals[neutralIndex].IsOnScreen(context))
 			{
@@ -195,7 +196,7 @@ void ProcessAsteroidEnemyCollisions(
 	std::vector<game::EnemyShip>& enemies,
 	const game::GameContext& context)
 {
-	for (std::size_t asteroidIndex = 0; asteroidIndex < asteroids.size();)
+	for (std::size_t asteroidIndex = game::hitPointsDepleted; asteroidIndex < asteroids.size();)
 	{
 		bool asteroidDestroyed = false;
 
@@ -205,7 +206,7 @@ void ProcessAsteroidEnemyCollisions(
 			continue;
 		}
 
-		for (std::size_t enemyIndex = 0; enemyIndex < enemies.size(); ++enemyIndex)
+		for (std::size_t enemyIndex = game::hitPointsDepleted; enemyIndex < enemies.size(); ++enemyIndex)
 		{
 			if (!enemies[enemyIndex].IsOnScreen(context))
 			{
@@ -232,11 +233,11 @@ void ProcessAsteroidEnemyCollisions(
 
 void ProcessAsteroidSatelliteCollisions(std::vector<game::Asteroid>& asteroids, std::vector<game::Satellite>& satellites)
 {
-	for (std::size_t asteroidIndex = 0; asteroidIndex < asteroids.size();)
+	for (std::size_t asteroidIndex = game::hitPointsDepleted; asteroidIndex < asteroids.size();)
 	{
 		bool asteroidDestroyed = false;
 
-		for (std::size_t satelliteIndex = 0; satelliteIndex < satellites.size(); ++satelliteIndex)
+		for (std::size_t satelliteIndex = game::hitPointsDepleted; satelliteIndex < satellites.size(); ++satelliteIndex)
 		{
 			if (!satellites[satelliteIndex].IntersectsCircle(
 					asteroids[asteroidIndex].GetCenter(),
@@ -263,11 +264,11 @@ void ProcessEnemyNeutralCollisions(
 	std::vector<game::NeutralShip>& neutrals,
 	const game::GameContext& context)
 {
-	for (std::size_t enemyIndex = 0; enemyIndex < enemies.size();)
+	for (std::size_t enemyIndex = game::hitPointsDepleted; enemyIndex < enemies.size();)
 	{
 		bool enemyRemoved = false;
 
-		for (std::size_t neutralIndex = 0; neutralIndex < neutrals.size(); ++neutralIndex)
+		for (std::size_t neutralIndex = game::hitPointsDepleted; neutralIndex < neutrals.size(); ++neutralIndex)
 		{
 			if (!enemies[enemyIndex].IsOnScreen(context) || !neutrals[neutralIndex].IsOnScreen(context))
 			{
@@ -297,7 +298,7 @@ void ProcessEnemySatelliteCollisions(
 	std::vector<game::Satellite>& satellites,
 	const game::GameContext& context)
 {
-	for (std::size_t enemyIndex = 0; enemyIndex < enemies.size();)
+	for (std::size_t enemyIndex = game::hitPointsDepleted; enemyIndex < enemies.size();)
 	{
 		bool enemyRemoved = false;
 		const sf::FloatRect enemyBounds = enemies[enemyIndex].GetBounds();
@@ -308,7 +309,7 @@ void ProcessEnemySatelliteCollisions(
 			continue;
 		}
 
-		for (std::size_t satelliteIndex = 0; satelliteIndex < satellites.size(); ++satelliteIndex)
+		for (std::size_t satelliteIndex = game::hitPointsDepleted; satelliteIndex < satellites.size(); ++satelliteIndex)
 		{
 			if (!satellites[satelliteIndex].IntersectsRect(enemyBounds))
 			{
@@ -330,11 +331,11 @@ void ProcessEnemySatelliteCollisions(
 
 void ProcessEnemyEnemyCollisions(std::vector<game::EnemyShip>& enemies, const game::GameContext& context)
 {
-	for (std::size_t firstIndex = 0; firstIndex < enemies.size();)
+	for (std::size_t firstIndex = game::hitPointsDepleted; firstIndex < enemies.size();)
 	{
 		bool pairRemoved = false;
 
-		for (std::size_t secondIndex = firstIndex + 1; secondIndex < enemies.size(); ++secondIndex)
+		for (std::size_t secondIndex = firstIndex + game::indexIncrement; secondIndex < enemies.size(); ++secondIndex)
 		{
 			if (!enemies[firstIndex].IsOnScreen(context) || !enemies[secondIndex].IsOnScreen(context))
 			{
@@ -361,11 +362,11 @@ void ProcessEnemyEnemyCollisions(std::vector<game::EnemyShip>& enemies, const ga
 
 void ProcessBulletBulletCollisions(std::vector<game::Bullet>& bullets)
 {
-	for (std::size_t firstIndex = 0; firstIndex < bullets.size();)
+	for (std::size_t firstIndex = game::hitPointsDepleted; firstIndex < bullets.size();)
 	{
 		bool pairRemoved = false;
 
-		for (std::size_t secondIndex = firstIndex + 1; secondIndex < bullets.size(); ++secondIndex)
+		for (std::size_t secondIndex = firstIndex + game::indexIncrement; secondIndex < bullets.size(); ++secondIndex)
 		{
 			const sf::FloatRect firstBounds = bullets[firstIndex].GetBounds();
 			const sf::FloatRect secondBounds = bullets[secondIndex].GetBounds();
@@ -392,11 +393,11 @@ void ProcessBulletEnemyCollisions(
 	std::vector<game::EnemyShip>& enemies,
 	const game::GameContext& context)
 {
-	for (std::size_t bulletIndex = 0; bulletIndex < bullets.size();)
+	for (std::size_t bulletIndex = game::hitPointsDepleted; bulletIndex < bullets.size();)
 	{
 		bool bulletHit = false;
 
-		for (std::size_t enemyIndex = 0; enemyIndex < enemies.size(); ++enemyIndex)
+		for (std::size_t enemyIndex = game::hitPointsDepleted; enemyIndex < enemies.size(); ++enemyIndex)
 		{
 			if (!enemies[enemyIndex].IsOnScreen(context))
 			{
@@ -426,20 +427,20 @@ void ProcessBulletEnemyCollisions(
 
 void ProcessBulletSatelliteCollisions(std::vector<game::Bullet>& bullets, std::vector<game::Satellite>& satellites)
 {
-	for (std::size_t bulletIndex = 0; bulletIndex < bullets.size();)
+	for (std::size_t bulletIndex = game::hitPointsDepleted; bulletIndex < bullets.size();)
 	{
 		const sf::Vector2f bulletCenter = bullets[bulletIndex].GetCenter();
 
 		bool bulletHit = false;
 
-		for (std::size_t satelliteIndex = 0; satelliteIndex < satellites.size(); ++satelliteIndex)
+		for (std::size_t satelliteIndex = game::hitPointsDepleted; satelliteIndex < satellites.size(); ++satelliteIndex)
 		{
 			if (!satellites[satelliteIndex].ContainsPoint(bulletCenter))
 			{
 				continue;
 			}
 
-			if (satellites[satelliteIndex].TakeDamage(1))
+			if (satellites[satelliteIndex].TakeDamage(game::collisionDamage))
 			{
 				satellites.erase(satellites.begin() + static_cast<std::ptrdiff_t>(satelliteIndex));
 			}
@@ -464,13 +465,13 @@ void ProcessBulletAsteroidCollisions(
 	std::vector<game::Asteroid>& asteroids,
 	const game::GameContext& context)
 {
-	for (std::size_t bulletIndex = 0; bulletIndex < bullets.size();)
+	for (std::size_t bulletIndex = game::hitPointsDepleted; bulletIndex < bullets.size();)
 	{
 		const sf::Vector2f bulletCenter = bullets[bulletIndex].GetCenter();
 
 		bool bulletHit = false;
 
-		for (std::size_t asteroidIndex = 0; asteroidIndex < asteroids.size(); ++asteroidIndex)
+		for (std::size_t asteroidIndex = game::hitPointsDepleted; asteroidIndex < asteroids.size(); ++asteroidIndex)
 		{
 			if (!asteroids[asteroidIndex].IsOnScreen(context))
 			{
@@ -482,7 +483,7 @@ void ProcessBulletAsteroidCollisions(
 				continue;
 			}
 
-			if (asteroids[asteroidIndex].TakeDamage(1))
+			if (asteroids[asteroidIndex].TakeDamage(game::collisionDamage))
 			{
 				asteroids.erase(asteroids.begin() + static_cast<std::ptrdiff_t>(asteroidIndex));
 			}

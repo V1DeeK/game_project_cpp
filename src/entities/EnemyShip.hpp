@@ -4,6 +4,7 @@
 #include <SFML/System/Vector2.hpp>
 
 #include "app/GameContext.hpp"
+#include "config/GameConstants.hpp"
 #include "entities/Ship.hpp"
 
 namespace game
@@ -38,9 +39,9 @@ public:
 
 private:
 	sf::Vector2f m_targetPosition;
-	int m_targetRingIndex = 0;
-	int m_targetPointIndex = 0;
-	float m_fireCooldown = 0.f;
+	int m_targetRingIndex = initialTargetRingIndex;
+	int m_targetPointIndex = initialTargetPointIndex;
+	float m_fireCooldown = initialFireCooldown;
 	EnemyBehavior m_behavior = EnemyBehavior::AttackSatellites;
 };
 } // namespace game

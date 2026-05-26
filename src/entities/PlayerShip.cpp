@@ -4,6 +4,7 @@
 #include <utility>
 
 #include "config/Colors.hpp"
+#include "config/GameConstants.hpp"
 
 namespace
 {
@@ -20,14 +21,16 @@ sf::Vector2f GetMouseWorldPosition(const sf::RenderWindow& window)
 
 sf::ConvexShape CreatePlayerShape(const game::GameContext& context)
 {
-	sf::ConvexShape ship(3);
-	ship.setPoint(0, sf::Vector2f(context.shipWidth / 2.f, 0.f));
-	ship.setPoint(1, sf::Vector2f(0.f, context.shipHeight));
-	ship.setPoint(2, sf::Vector2f(context.shipWidth, context.shipHeight));
-	ship.setOrigin(sf::Vector2f(context.shipWidth / 2.f, context.shipHeight / 2.f));
+	sf::ConvexShape ship(game::shipTriangleVertexCount);
+	ship.setPoint(
+		game::triangleVertexNose,
+		sf::Vector2f(context.shipWidth * game::half, game::screenOrigin));
+	ship.setPoint(game::triangleVertexBottomLeft, sf::Vector2f(game::screenOrigin, context.shipHeight));
+	ship.setPoint(game::triangleVertexBottomRight, sf::Vector2f(context.shipWidth, context.shipHeight));
+	ship.setOrigin(sf::Vector2f(context.shipWidth * game::half, context.shipHeight * game::half));
 	ship.setFillColor(game::kColorPlayerShipFill);
 	ship.setOutlineColor(game::kColorPlayerShipOutline);
-	ship.setOutlineThickness(1.f);
+	ship.setOutlineThickness(game::defaultOutlineThickness);
 	return ship;
 }
 } // namespace
@@ -42,7 +45,7 @@ PlayerShip::PlayerShip(sf::ConvexShape shape)
 PlayerShip PlayerShip::CreateAtCenter(const GameContext& context)
 {
 	PlayerShip player(CreatePlayerShape(context));
-	player.SetPosition(sf::Vector2f(context.windowWidth / 2.f, context.windowHeight / 2.f));
+	player.SetPosition(sf::Vector2f(context.windowWidth * half, context.windowHeight * half));
 	return player;
 }
 
@@ -85,26 +88,26 @@ void PlayerShip::ClampToScreen(const GameContext& context)
 	sf::Shape& shape = GetShape();
 	sf::FloatRect bounds = shape.getGlobalBounds();
 
-	if (bounds.position.x < 0.f)
+	if (bounds.position.x < screenOrigin)
 	{
-		shape.move(sf::Vector2f(-bounds.position.x, 0.f));
+		shape.move(sf::Vector2f(-bounds.position.x, screenOrigin));
 	}
 	else if (bounds.position.x + bounds.size.x > context.windowWidth)
 	{
 		const float offset = context.windowWidth - (bounds.position.x + bounds.size.x);
-		shape.move(sf::Vector2f(offset, 0.f));
+		shape.move(sf::Vector2f(offset, screenOrigin));
 	}
 
 	bounds = shape.getGlobalBounds();
 
-	if (bounds.position.y < 0.f)
+	if (bounds.position.y < screenOrigin)
 	{
-		shape.move(sf::Vector2f(0.f, -bounds.position.y));
+		shape.move(sf::Vector2f(screenOrigin, -bounds.position.y));
 	}
 	else if (bounds.position.y + bounds.size.y > context.windowHeight)
 	{
 		const float offset = context.windowHeight - (bounds.position.y + bounds.size.y);
-		shape.move(sf::Vector2f(0.f, offset));
+		shape.move(sf::Vector2f(screenOrigin, offset));
 	}
 }
 } // namespace game

@@ -10,7 +10,7 @@ namespace
 {
 float GetSatelliteOrbitRadius(const game::GameContext& context)
 {
-	return context.earthRadius + 24.f * context.scale;
+	return context.earthRadius + game::satelliteOrbitOffsetFromEarth * context.scale;
 }
 
 float GetFiringRingRadius(const game::GameContext& context, int ringIndex)
@@ -33,7 +33,7 @@ bool IsFiringSlotOccupied(int ringIndex, int pointIndex, const std::vector<game:
 
 bool HasFreeFiringSlotOnRing(int ringIndex, const std::vector<game::EnemyShip>& enemies)
 {
-	for (int pointIndex = 0; pointIndex < game::firingPointCount; ++pointIndex)
+	for (int pointIndex = game::hitPointsDepleted; pointIndex < game::firingPointCount; ++pointIndex)
 	{
 		if (!IsFiringSlotOccupied(ringIndex, pointIndex, enemies))
 		{
@@ -53,9 +53,8 @@ sf::Vector2f FiringRing::GetPointPosition(
 	int pointIndex)
 {
 	const float firingRadius = GetFiringRingRadius(context, ringIndex);
-	const float angleStep = 6.2831853f / static_cast<float>(firingPointCount);
-	const float ringAngleOffset = firingRing2AngleOffsetDegrees * 3.14159265f / 180.f
-		* static_cast<float>(ringIndex);
+	const float angleStep = twoPi / static_cast<float>(firingPointCount);
+	const float ringAngleOffset = firingRing2AngleOffsetDegrees * radiansPerDegree * static_cast<float>(ringIndex);
 	const float angle = angleStep * static_cast<float>(pointIndex) + ringAngleOffset;
 	return sf::Vector2f(
 		earthCenter.x + std::cos(angle) * firingRadius,
@@ -71,25 +70,25 @@ FiringSlotAssignment FiringRing::FindNearestSlot(
 	FiringSlotAssignment result;
 	int searchRingCount = firingRingCount;
 
-	for (int ringIndex = 0; ringIndex < firingRingCount; ++ringIndex)
+	for (int ringIndex = hitPointsDepleted; ringIndex < firingRingCount; ++ringIndex)
 	{
 		if (HasFreeFiringSlotOnRing(ringIndex, enemies))
 		{
-			searchRingCount = ringIndex + 1;
+			searchRingCount = ringIndex + indexIncrement;
 			break;
 		}
 	}
 
-	int bestFreeRing = -1;
-	int bestFreePoint = 0;
+	int bestFreeRing = noFiringRingIndex;
+	int bestFreePoint = initialTargetPointIndex;
 	float bestFreeDistance = std::numeric_limits<float>::max();
-	int bestAnyRing = 0;
-	int bestAnyPoint = 0;
+	int bestAnyRing = initialTargetRingIndex;
+	int bestAnyPoint = initialTargetPointIndex;
 	float bestAnyDistance = std::numeric_limits<float>::max();
 
-	for (int ringIndex = 0; ringIndex < searchRingCount; ++ringIndex)
+	for (int ringIndex = hitPointsDepleted; ringIndex < searchRingCount; ++ringIndex)
 	{
-		for (int pointIndex = 0; pointIndex < firingPointCount; ++pointIndex)
+		for (int pointIndex = hitPointsDepleted; pointIndex < firingPointCount; ++pointIndex)
 		{
 			const sf::Vector2f slotPosition = GetPointPosition(earthCenter, context, ringIndex, pointIndex);
 			const sf::Vector2f delta = slotPosition - spawnPosition;
@@ -111,7 +110,7 @@ FiringSlotAssignment FiringRing::FindNearestSlot(
 		}
 	}
 
-	if (bestFreeRing >= 0)
+	if (bestFreeRing != noFiringRingIndex)
 	{
 		result.ringIndex = bestFreeRing;
 		result.pointIndex = bestFreePoint;

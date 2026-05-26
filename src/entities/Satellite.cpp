@@ -6,12 +6,13 @@
 
 #include "collision/Geometry.hpp"
 #include "config/Colors.hpp"
+#include "config/GameConstants.hpp"
 
 namespace game
 {
 float Satellite::GetRadius(const GameContext& context)
 {
-	return 5.f * context.scale;
+	return satelliteRadiusBase * context.scale;
 }
 
 std::optional<sf::Vector2f> Satellite::FindNearestPosition(
@@ -50,9 +51,11 @@ void Satellite::DrawHpBar(sf::RenderWindow& window, const GameContext& context) 
 {
 	const float radius = m_shape.getRadius();
 	const sf::Vector2f center = m_shape.getPosition();
-	const float barWidth = 18.f * context.scale;
-	const float barHeight = 3.f * context.scale;
-	const sf::Vector2f barPosition(center.x - barWidth / 2.f, center.y - radius - 7.f * context.scale);
+	const float barWidth = satelliteHpBarWidthBase * context.scale;
+	const float barHeight = satelliteHpBarHeightBase * context.scale;
+	const sf::Vector2f barPosition(
+		center.x - barWidth * half,
+		center.y - radius - satelliteHpBarVerticalOffsetBase * context.scale);
 
 	sf::RectangleShape background(sf::Vector2f(barWidth, barHeight));
 	background.setPosition(barPosition);
@@ -67,13 +70,13 @@ void Satellite::DrawHpBar(sf::RenderWindow& window, const GameContext& context) 
 	{
 		foreground.setFillColor(kColorHpForeground);
 	}
-	else if (m_hp > 0)
+	else if (m_hp > hitPointsDepleted)
 	{
 		foreground.setFillColor(kColorHpDamaged);
 	}
 
 	window.draw(background);
-	if (foregroundWidth > 0.f)
+	if (foregroundWidth > screenOrigin)
 	{
 		window.draw(foreground);
 	}
@@ -92,7 +95,7 @@ float Satellite::GetCollisionRadius() const
 bool Satellite::TakeDamage(int damage)
 {
 	m_hp -= damage;
-	return m_hp <= 0;
+	return m_hp <= hitPointsDepleted;
 }
 
 bool Satellite::IntersectsCircle(sf::Vector2f center, float radius) const

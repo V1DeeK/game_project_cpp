@@ -3,6 +3,7 @@
 #include <utility>
 
 #include "collision/Geometry.hpp"
+#include "config/GameConstants.hpp"
 
 namespace game
 {
@@ -26,26 +27,26 @@ void EnemyShip::ClampToScreen(const GameContext& context)
 	sf::Shape& shape = GetShape();
 	sf::FloatRect bounds = shape.getGlobalBounds();
 
-	if (bounds.position.x < 0.f)
+	if (bounds.position.x < screenOrigin)
 	{
-		shape.move(sf::Vector2f(-bounds.position.x, 0.f));
+		shape.move(sf::Vector2f(-bounds.position.x, screenOrigin));
 	}
 	else if (bounds.position.x + bounds.size.x > context.windowWidth)
 	{
 		const float offset = context.windowWidth - (bounds.position.x + bounds.size.x);
-		shape.move(sf::Vector2f(offset, 0.f));
+		shape.move(sf::Vector2f(offset, screenOrigin));
 	}
 
 	bounds = shape.getGlobalBounds();
 
-	if (bounds.position.y < 0.f)
+	if (bounds.position.y < screenOrigin)
 	{
-		shape.move(sf::Vector2f(0.f, -bounds.position.y));
+		shape.move(sf::Vector2f(screenOrigin, -bounds.position.y));
 	}
 	else if (bounds.position.y + bounds.size.y > context.windowHeight)
 	{
 		const float offset = context.windowHeight - (bounds.position.y + bounds.size.y);
-		shape.move(sf::Vector2f(0.f, offset));
+		shape.move(sf::Vector2f(screenOrigin, offset));
 	}
 }
 

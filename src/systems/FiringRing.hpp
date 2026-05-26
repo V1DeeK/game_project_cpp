@@ -5,6 +5,7 @@
 #include <SFML/System/Vector2.hpp>
 
 #include "app/GameContext.hpp"
+#include "config/GameConstants.hpp"
 
 namespace game
 {
@@ -12,8 +13,8 @@ class EnemyShip;
 
 struct FiringSlotAssignment
 {
-	int ringIndex = 0;
-	int pointIndex = 0;
+	int ringIndex = initialTargetRingIndex;
+	int pointIndex = initialTargetPointIndex;
 };
 
 class FiringRing

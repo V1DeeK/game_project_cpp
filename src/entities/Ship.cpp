@@ -4,19 +4,22 @@
 #include <utility>
 
 #include "config/Colors.hpp"
+#include "config/GameConstants.hpp"
 
 namespace
 {
 sf::ConvexShape CreateTriangleShip(const game::GameContext& context, sf::Color fillColor, sf::Color outlineColor)
 {
-	sf::ConvexShape ship(3);
-	ship.setPoint(0, sf::Vector2f(context.shipWidth / 2.f, 0.f));
-	ship.setPoint(1, sf::Vector2f(0.f, context.shipHeight));
-	ship.setPoint(2, sf::Vector2f(context.shipWidth, context.shipHeight));
-	ship.setOrigin(sf::Vector2f(context.shipWidth / 2.f, context.shipHeight / 2.f));
+	sf::ConvexShape ship(game::shipTriangleVertexCount);
+	ship.setPoint(
+		game::triangleVertexNose,
+		sf::Vector2f(context.shipWidth * game::half, game::screenOrigin));
+	ship.setPoint(game::triangleVertexBottomLeft, sf::Vector2f(game::screenOrigin, context.shipHeight));
+	ship.setPoint(game::triangleVertexBottomRight, sf::Vector2f(context.shipWidth, context.shipHeight));
+	ship.setOrigin(sf::Vector2f(context.shipWidth * game::half, context.shipHeight * game::half));
 	ship.setFillColor(fillColor);
 	ship.setOutlineColor(outlineColor);
-	ship.setOutlineThickness(1.f);
+	ship.setOutlineThickness(game::defaultOutlineThickness);
 	return ship;
 }
 } // namespace
@@ -37,23 +40,24 @@ void Ship::RotateToward(sf::ConvexShape& shape, sf::Vector2f shipCenter, sf::Vec
 {
 	sf::Vector2f direction = targetPoint - shipCenter;
 	const float length = std::sqrt(direction.x * direction.x + direction.y * direction.y);
-	if (length <= 0.0001f)
+	if (length <= directionEpsilon)
 	{
 		return;
 	}
 
-	const float angleDegrees = std::atan2(direction.y, direction.x) * 180.f / 3.14159265f + 90.f;
+	const float angleDegrees = std::atan2(direction.y, direction.x) * degreesPerRadian + shipRotationOffsetDegrees;
 	shape.setRotation(sf::degrees(angleDegrees));
 }
 
 sf::Vector2f Ship::GetForwardDirection(const sf::ConvexShape& shape, const GameContext& context)
 {
 	const sf::Transform transform = shape.getTransform();
-	const sf::Vector2f nose = transform.transformPoint(sf::Vector2f(context.shipWidth / 2.f, 0.f));
-	const sf::Vector2f body = transform.transformPoint(sf::Vector2f(context.shipWidth / 2.f, context.shipHeight * 0.5f));
+	const sf::Vector2f nose = transform.transformPoint(sf::Vector2f(context.shipWidth * half, screenOrigin));
+	const sf::Vector2f body = transform.transformPoint(
+		sf::Vector2f(context.shipWidth * half, context.shipHeight * shipBodyForwardFactor));
 	sf::Vector2f direction = nose - body;
 	const float length = std::sqrt(direction.x * direction.x + direction.y * direction.y);
-	if (length > 0.0001f)
+	if (length > directionEpsilon)
 	{
 		direction /= length;
 	}
@@ -62,7 +66,7 @@ sf::Vector2f Ship::GetForwardDirection(const sf::ConvexShape& shape, const GameC
 
 sf::Vector2f Ship::GetNosePosition(const sf::ConvexShape& shape, const GameContext& context)
 {
-	return shape.getTransform().transformPoint(sf::Vector2f(context.shipWidth / 2.f, 0.f));
+	return shape.getTransform().transformPoint(sf::Vector2f(context.shipWidth * half, screenOrigin));
 }
 
 void Ship::RotateToward(sf::Vector2f targetPoint)

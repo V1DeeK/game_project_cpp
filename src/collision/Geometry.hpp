@@ -7,6 +7,7 @@
 #include <SFML/System/Vector2.hpp>
 
 #include "app/GameContext.hpp"
+#include "config/GameConstants.hpp"
 
 namespace game
 {
@@ -45,9 +46,9 @@ inline bool RectsIntersect(const sf::FloatRect& first, const sf::FloatRect& seco
 inline bool IsIntersectingScreen(const sf::FloatRect& bounds, const GameContext& context)
 {
 	return bounds.position.x < context.windowWidth
-		&& bounds.position.x + bounds.size.x > 0.f
+		&& bounds.position.x + bounds.size.x > screenOrigin
 		&& bounds.position.y < context.windowHeight
-		&& bounds.position.y + bounds.size.y > 0.f;
+		&& bounds.position.y + bounds.size.y > screenOrigin;
 }
 
 inline bool IsShapeOnScreen(const sf::Shape& shape, const GameContext& context)
@@ -62,5 +63,4 @@ inline bool IsFullyOutsideScreen(const sf::FloatRect& bounds, const GameContext&
 		|| bounds.position.y + bounds.size.y < -margin
 		|| bounds.position.y > context.windowHeight + margin;
 }
-}
-
+} // namespace game

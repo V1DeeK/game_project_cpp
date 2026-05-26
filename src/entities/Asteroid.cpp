@@ -15,17 +15,17 @@ sf::Vector2f CreateOffScreenSpawnPosition(
 	float spawnMargin,
 	std::mt19937& rng)
 {
-	std::uniform_real_distribution<float> positionX(0.f, context.windowWidth);
-	std::uniform_real_distribution<float> positionY(0.f, context.windowHeight);
-	std::uniform_int_distribution<int> edgeDist(0, 3);
+	std::uniform_real_distribution<float> positionX(game::screenOrigin, context.windowWidth);
+	std::uniform_real_distribution<float> positionY(game::screenOrigin, context.windowHeight);
+	std::uniform_int_distribution<int> edgeDist(game::screenEdgeTop, game::screenEdgeLeft);
 
 	switch (edgeDist(rng))
 	{
-	case 0:
+	case game::screenEdgeTop:
 		return sf::Vector2f(positionX(rng), -spawnMargin);
-	case 1:
+	case game::screenEdgeRight:
 		return sf::Vector2f(context.windowWidth + spawnMargin, positionY(rng));
-	case 2:
+	case game::screenEdgeBottom:
 		return sf::Vector2f(positionX(rng), context.windowHeight + spawnMargin);
 	default:
 		return sf::Vector2f(-spawnMargin, positionY(rng));
@@ -39,7 +39,7 @@ std::vector<Asteroid> Asteroid::CreateInitialFleet(const GameContext& context, s
 {
 	std::vector<Asteroid> asteroids;
 	asteroids.reserve(static_cast<std::size_t>(targetAsteroidCount));
-	for (int i = 0; i < targetAsteroidCount; ++i)
+	for (int i = hitPointsDepleted; i < targetAsteroidCount; ++i)
 	{
 		asteroids.push_back(CreateRandom(context, rng));
 	}
@@ -66,9 +66,9 @@ void Asteroid::UpdateAll(
 
 void Asteroid::ProcessMerges(std::vector<Asteroid>& asteroids)
 {
-	for (std::size_t firstIndex = 0; firstIndex < asteroids.size(); ++firstIndex)
+	for (std::size_t firstIndex = hitPointsDepleted; firstIndex < asteroids.size(); ++firstIndex)
 	{
-		for (std::size_t secondIndex = firstIndex + 1; secondIndex < asteroids.size();)
+		for (std::size_t secondIndex = firstIndex + indexIncrement; secondIndex < asteroids.size();)
 		{
 			if (!asteroids[firstIndex].IntersectsCircle(
 					asteroids[secondIndex].GetCenter(),
@@ -86,11 +86,11 @@ void Asteroid::ProcessMerges(std::vector<Asteroid>& asteroids)
 
 Asteroid Asteroid::CreateRandom(const GameContext& context, std::mt19937& rng)
 {
-	const float radius = Satellite::GetRadius(context) * 2.f;
-	const float spawnMargin = radius + 30.f * context.scale;
+	const float radius = Satellite::GetRadius(context) * asteroidRadiusMultiplier;
+	const float spawnMargin = radius + asteroidSpawnMarginExtra * context.scale;
 
-	std::uniform_real_distribution<float> speed(30.f, 60.f);
-	std::uniform_real_distribution<float> direction(0.f, 6.2831853f);
+	std::uniform_real_distribution<float> speed(asteroidMinSpeed, asteroidMaxSpeed);
+	std::uniform_real_distribution<float> direction(screenOrigin, twoPi);
 
 	const sf::Vector2f position = CreateOffScreenSpawnPosition(context, spawnMargin, rng);
 	const float asteroidSpeed = speed(rng) * context.scale;
@@ -102,14 +102,14 @@ Asteroid Asteroid::CreateRandom(const GameContext& context, std::mt19937& rng)
 	shape.setPosition(position);
 	shape.setFillColor(kColorAsteroidFill);
 	shape.setOutlineColor(kColorAsteroidOutline);
-	shape.setOutlineThickness(1.f);
+	shape.setOutlineThickness(defaultOutlineThickness);
 
 	Asteroid asteroid;
 	asteroid.m_shape = std::move(shape);
 	asteroid.m_velocity = velocity;
 	asteroid.m_hp = baseAsteroidHitPoints;
 	asteroid.m_maxHp = baseAsteroidHitPoints;
-	asteroid.m_mergeCount = 1;
+	asteroid.m_mergeCount = initialMergeCount;
 	return asteroid;
 }
 
@@ -137,7 +137,7 @@ Asteroid Asteroid::Merge(const Asteroid& first, const Asteroid& second)
 	shape.setPosition(mergedPosition);
 	shape.setFillColor(kColorAsteroidFill);
 	shape.setOutlineColor(kColorAsteroidOutline);
-	shape.setOutlineThickness(1.f);
+	shape.setOutlineThickness(defaultOutlineThickness);
 
 	Asteroid asteroid;
 	asteroid.m_shape = std::move(shape);
@@ -171,7 +171,7 @@ bool Asteroid::IsOnScreen(const GameContext& context) const
 bool Asteroid::TakeDamage(int damage)
 {
 	m_hp -= damage;
-	if (m_hp <= 0)
+	if (m_hp <= hitPointsDepleted)
 	{
 		return true;
 	}
@@ -184,7 +184,7 @@ void Asteroid::UpdateDamageVisual()
 {
 	if (m_hp < m_maxHp)
 	{
-		m_shape.setFillColor(sf::Color(200, 130, 70));
+		m_shape.setFillColor(kColorAsteroidDamaged);
 	}
 	else
 	{
@@ -211,29 +211,29 @@ void Asteroid::ClampToScreenWithBounce(const GameContext& context)
 {
 	sf::FloatRect bounds = m_shape.getGlobalBounds();
 
-	if (bounds.position.x < 0.f)
+	if (bounds.position.x < screenOrigin)
 	{
-		m_shape.move(sf::Vector2f(-bounds.position.x, 0.f));
+		m_shape.move(sf::Vector2f(-bounds.position.x, screenOrigin));
 		m_velocity.x = std::abs(m_velocity.x);
 	}
 	else if (bounds.position.x + bounds.size.x > context.windowWidth)
 	{
 		const float offset = context.windowWidth - (bounds.position.x + bounds.size.x);
-		m_shape.move(sf::Vector2f(offset, 0.f));
+		m_shape.move(sf::Vector2f(offset, screenOrigin));
 		m_velocity.x = -std::abs(m_velocity.x);
 	}
 
 	bounds = m_shape.getGlobalBounds();
 
-	if (bounds.position.y < 0.f)
+	if (bounds.position.y < screenOrigin)
 	{
-		m_shape.move(sf::Vector2f(0.f, -bounds.position.y));
+		m_shape.move(sf::Vector2f(screenOrigin, -bounds.position.y));
 		m_velocity.y = std::abs(m_velocity.y);
 	}
 	else if (bounds.position.y + bounds.size.y > context.windowHeight)
 	{
 		const float offset = context.windowHeight - (bounds.position.y + bounds.size.y);
-		m_shape.move(sf::Vector2f(0.f, offset));
+		m_shape.move(sf::Vector2f(screenOrigin, offset));
 		m_velocity.y = -std::abs(m_velocity.y);
 	}
 }

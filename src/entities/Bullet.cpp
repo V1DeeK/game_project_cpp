@@ -2,6 +2,8 @@
 
 #include <algorithm>
 
+#include "config/GameConstants.hpp"
+
 namespace game
 {
 void Bullet::UpdateAll(std::vector<Bullet>& bullets, float deltaTime, const GameContext& context)
@@ -31,7 +33,7 @@ void Bullet::Update(float deltaTime)
 
 bool Bullet::IsOffScreen(const GameContext& context) const
 {
-	const float removeMargin = 40.f * context.scale;
+	const float removeMargin = bulletOffScreenMargin * context.scale;
 	const sf::Vector2f position = m_shape.getPosition();
 	return position.x < -removeMargin
 		|| position.x > context.windowWidth + removeMargin
@@ -48,8 +50,8 @@ sf::Vector2f Bullet::GetCenter() const
 {
 	const sf::FloatRect bounds = m_shape.getGlobalBounds();
 	return sf::Vector2f(
-		bounds.position.x + bounds.size.x / 2.f,
-		bounds.position.y + bounds.size.y / 2.f);
+		bounds.position.x + bounds.size.x * half,
+		bounds.position.y + bounds.size.y * half);
 }
 
 sf::FloatRect Bullet::GetBounds() const

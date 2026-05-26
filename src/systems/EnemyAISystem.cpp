@@ -19,7 +19,7 @@ void EnemyAISystem::UpdateAll(
 	const GameContext& context)
 {
 	const float moveSpeed = enemyMoveSpeed * context.scale;
-	const float arrivalDistance = 4.f * context.scale;
+	const float arrivalDistance = enemyArrivalDistanceFactor * context.scale;
 
 	for (auto& enemy : enemies)
 	{
@@ -39,7 +39,7 @@ void EnemyAISystem::UpdateAll(
 			enemy.RotateToward(playerPosition);
 
 			enemy.TickFireCooldown(deltaTime);
-			if (enemy.GetFireCooldown() <= 0.f)
+			if (enemy.GetFireCooldown() <= initialFireCooldown)
 			{
 				bullets.push_back(FiringSystem::CreateBulletFromShip(enemy, context));
 				enemy.SetFireCooldown(enemyFireInterval);
@@ -69,7 +69,7 @@ void EnemyAISystem::UpdateAll(
 		enemy.RotateTowardFromPosition(currentPosition, *satelliteTarget);
 
 		enemy.TickFireCooldown(deltaTime);
-		if (enemy.GetFireCooldown() <= 0.f)
+		if (enemy.GetFireCooldown() <= initialFireCooldown)
 		{
 			bullets.push_back(FiringSystem::CreateBulletFromShip(enemy, context));
 			enemy.SetFireCooldown(enemyFireInterval);

@@ -22,17 +22,17 @@ sf::Vector2f CreateOffScreenSpawnPosition(
 	float spawnMargin,
 	std::mt19937& rng)
 {
-	std::uniform_real_distribution<float> positionX(0.f, context.windowWidth);
-	std::uniform_real_distribution<float> positionY(0.f, context.windowHeight);
-	std::uniform_int_distribution<int> edgeDist(0, 3);
+	std::uniform_real_distribution<float> positionX(game::screenOrigin, context.windowWidth);
+	std::uniform_real_distribution<float> positionY(game::screenOrigin, context.windowHeight);
+	std::uniform_int_distribution<int> edgeDist(game::screenEdgeTop, game::screenEdgeLeft);
 
 	switch (edgeDist(rng))
 	{
-	case 0:
+	case game::screenEdgeTop:
 		return sf::Vector2f(positionX(rng), -spawnMargin);
-	case 1:
+	case game::screenEdgeRight:
 		return sf::Vector2f(context.windowWidth + spawnMargin, positionY(rng));
-	case 2:
+	case game::screenEdgeBottom:
 		return sf::Vector2f(positionX(rng), context.windowHeight + spawnMargin);
 	default:
 		return sf::Vector2f(-spawnMargin, positionY(rng));
@@ -45,28 +45,32 @@ sf::ConvexShape CreateNeutralTriangleShape(const game::GameContext& context)
 	const float width = size.x;
 	const float height = size.y;
 
-	sf::ConvexShape shape(3);
-	shape.setPoint(0, sf::Vector2f(width / 2.f, 0.f));
-	shape.setPoint(1, sf::Vector2f(0.f, height));
-	shape.setPoint(2, sf::Vector2f(width, height));
-	shape.setOrigin(sf::Vector2f(width / 2.f, height / 2.f));
+	sf::ConvexShape shape(game::shipTriangleVertexCount);
+	shape.setPoint(
+		game::triangleVertexNose,
+		sf::Vector2f(width * game::half, game::screenOrigin));
+	shape.setPoint(game::triangleVertexBottomLeft, sf::Vector2f(game::screenOrigin, height));
+	shape.setPoint(game::triangleVertexBottomRight, sf::Vector2f(width, height));
+	shape.setOrigin(sf::Vector2f(width * game::half, height * game::half));
 	shape.setFillColor(game::kColorNeutralFill);
 	shape.setOutlineColor(game::kColorNeutralOutline);
-	shape.setOutlineThickness(1.f);
+	shape.setOutlineThickness(game::defaultOutlineThickness);
 	return shape;
 }
 
 sf::Vector2f CreateInboundVelocity(sf::Vector2f spawnPosition, const game::GameContext& context, float speed, std::mt19937& rng)
 {
-	const sf::Vector2f screenCenter(context.windowWidth / 2.f, context.windowHeight / 2.f);
+	const sf::Vector2f screenCenter(context.windowWidth * game::half, context.windowHeight * game::half);
 	sf::Vector2f direction = screenCenter - spawnPosition;
 	const float length = std::sqrt(direction.x * direction.x + direction.y * direction.y);
-	if (length > 0.0001f)
+	if (length > game::directionEpsilon)
 	{
 		direction /= length;
 	}
 
-	std::uniform_real_distribution<float> angleOffset(-0.45f, 0.45f);
+	std::uniform_real_distribution<float> angleOffset(
+		game::neutralSpawnAngleOffsetMin,
+		game::neutralSpawnAngleOffsetMax);
 	const float offsetAngle = angleOffset(rng);
 	const float cosA = std::cos(offsetAngle);
 	const float sinA = std::sin(offsetAngle);
@@ -84,7 +88,7 @@ std::vector<NeutralShip> NeutralShip::CreateInitialFleet(const GameContext& cont
 {
 	std::vector<NeutralShip> neutrals;
 	neutrals.reserve(neutralShipCount);
-	for (int i = 0; i < neutralShipCount; ++i)
+	for (int i = hitPointsDepleted; i < neutralShipCount; ++i)
 	{
 		neutrals.push_back(CreateRandom(context, rng));
 	}
@@ -102,7 +106,7 @@ void NeutralShip::UpdateAll(
 		neutral.m_shape.move(neutral.m_velocity * deltaTime);
 	}
 
-	const float removeMargin = 80.f * context.scale;
+	const float removeMargin = neutralOffScreenRemoveMargin * context.scale;
 	neutrals.erase(
 		std::remove_if(
 			neutrals.begin(),
@@ -121,7 +125,7 @@ void NeutralShip::UpdateAll(
 NeutralShip NeutralShip::CreateRandom(const GameContext& context, std::mt19937& rng)
 {
 	const sf::Vector2f shipSize = GetNeutralShipSize(context);
-	const float spawnMargin = std::max(shipSize.x, shipSize.y) + 40.f * context.scale;
+	const float spawnMargin = std::max(shipSize.x, shipSize.y) + offScreenSpawnMarginExtra * context.scale;
 
 	const sf::Vector2f position = CreateOffScreenSpawnPosition(context, spawnMargin, rng);
 	const float speed = neutralMoveSpeed * context.scale;
@@ -130,7 +134,7 @@ NeutralShip NeutralShip::CreateRandom(const GameContext& context, std::mt19937& 
 	sf::ConvexShape shape = CreateNeutralTriangleShape(context);
 	shape.setPosition(position);
 
-	const float angleDegrees = std::atan2(velocity.y, velocity.x) * 180.f / 3.14159265f + 90.f;
+	const float angleDegrees = std::atan2(velocity.y, velocity.x) * degreesPerRadian + shipRotationOffsetDegrees;
 	shape.setRotation(sf::degrees(angleDegrees));
 
 	NeutralShip neutral;

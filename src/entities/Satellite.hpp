@@ -10,6 +10,7 @@
 #include <SFML/System/Vector2.hpp>
 
 #include "app/GameContext.hpp"
+#include "config/GameConstants.hpp"
 
 namespace game
 {
@@ -40,10 +41,10 @@ private:
 	void ClampToScreen(const GameContext& context);
 
 	sf::CircleShape m_shape;
-	float m_angle = 0.f;
-	float m_angularSpeed = 0.f;
-	float m_orbitRadius = 0.f;
-	int m_hp = 0;
-	int m_maxHp = 0;
+	float m_angle = initialOrbitAngle;
+	float m_angularSpeed = initialAngularSpeed;
+	float m_orbitRadius = initialOrbitRadius;
+	int m_hp = initialHitPoints;
+	int m_maxHp = initialHitPoints;
 };
 } // namespace game

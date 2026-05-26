@@ -2,6 +2,9 @@
 
 #include <utility>
 
+#include "config/Colors.hpp"
+#include "config/GameConstants.hpp"
+
 namespace game
 {
 Earth::Earth(sf::CircleShape shape)
@@ -14,9 +17,9 @@ Earth Earth::Create(const GameContext& context)
 	sf::CircleShape shape(context.earthRadius);
 	shape.setOrigin(sf::Vector2f(context.earthRadius, context.earthRadius));
 	shape.setPosition(GetEarthCenter(context));
-	shape.setFillColor(sf::Color(25, 90, 170));
-	shape.setOutlineColor(sf::Color(45, 150, 70));
-	shape.setOutlineThickness(4.f);
+	shape.setFillColor(kColorEarthFill);
+	shape.setOutlineColor(kColorEarthOutline);
+	shape.setOutlineThickness(earthOutlineThickness);
 	return Earth(std::move(shape));
 }
 
