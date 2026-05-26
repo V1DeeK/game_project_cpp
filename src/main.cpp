@@ -18,15 +18,19 @@
 #include "entities/NeutralShip.hpp"
 #include "entities/PlayerShip.hpp"
 #include "entities/Ship.hpp"
+#include "systems/EnemyAISystem.hpp"
 #include "systems/FiringRing.hpp"
 #include "systems/FiringSystem.hpp"
 #include "systems/SatelliteOrbitSystem.hpp"
+#include "systems/SpawnSystem.hpp"
 
 using game::Asteroid;
 using game::Bullet;
 using game::CreateGameContext;
 using game::GameContext;
 using game::FiringSystem;
+using game::EnemyAISystem;
+using game::SpawnSystem;
 using game::SatelliteOrbitSystem;
 using game::Earth;
 using game::Satellite;
@@ -63,7 +67,7 @@ void ProcessBulletNeutralCollisions(
 			}
 
 			neutrals.erase(neutrals.begin() + static_cast<std::ptrdiff_t>(neutralIndex));
-			EnemyShip::SpawnFromAllSides(enemies, context, earthCenter, rng);
+			SpawnSystem::SpawnEnemiesFromAllSides(enemies, context, earthCenter, rng);
 			bulletHit = true;
 			break;
 		}
@@ -537,74 +541,6 @@ void ProcessBulletAsteroidCollisions(
 	}
 }
 
-void UpdateEnemies(
-	std::vector<EnemyShip>& enemies,
-	std::vector<Bullet>& bullets,
-	const std::vector<Satellite>& satellites,
-	float deltaTime,
-	sf::Vector2f earthCenter,
-	sf::Vector2f playerPosition,
-	const GameContext& context)
-{
-	const float moveSpeed = enemyMoveSpeed * context.scale;
-	const float arrivalDistance = 4.f * context.scale;
-
-	for (auto& enemy : enemies)
-	{
-		const sf::Vector2f currentPosition = enemy.GetPosition();
-
-		if (enemy.GetBehavior() == EnemyBehavior::HuntPlayer)
-		{
-			sf::Vector2f toPlayer = playerPosition - currentPosition;
-			const float distance = std::sqrt(toPlayer.x * toPlayer.x + toPlayer.y * toPlayer.y);
-			if (distance > arrivalDistance)
-			{
-				toPlayer /= distance;
-				enemy.Move(toPlayer * moveSpeed * deltaTime);
-				enemy.ClampToScreen(context);
-			}
-
-			enemy.RotateToward(playerPosition);
-
-			enemy.TickFireCooldown(deltaTime);
-			if (enemy.GetFireCooldown() <= 0.f)
-			{
-				bullets.push_back(FiringSystem::CreateBulletFromShip(enemy, context));
-				enemy.SetFireCooldown(enemyFireInterval);
-			}
-			continue;
-		}
-
-		sf::Vector2f toTarget = enemy.GetTargetPosition() - currentPosition;
-		const float distance = std::sqrt(toTarget.x * toTarget.x + toTarget.y * toTarget.y);
-
-		if (distance > arrivalDistance)
-		{
-			toTarget /= distance;
-			enemy.Move(toTarget * moveSpeed * deltaTime);
-			enemy.ClampToScreen(context);
-			enemy.RotateTowardFromPosition(currentPosition, earthCenter);
-			continue;
-		}
-
-		const std::optional<sf::Vector2f> satelliteTarget = Satellite::FindNearestPosition(currentPosition, satellites);
-		if (!satelliteTarget.has_value())
-		{
-			enemy.RotateTowardFromPosition(currentPosition, earthCenter);
-			continue;
-		}
-
-		enemy.RotateTowardFromPosition(currentPosition, *satelliteTarget);
-
-		enemy.TickFireCooldown(deltaTime);
-		if (enemy.GetFireCooldown() <= 0.f)
-		{
-			bullets.push_back(FiringSystem::CreateBulletFromShip(enemy, context));
-			enemy.SetFireCooldown(enemyFireInterval);
-		}
-	}
-}
-
 } // namespace
 
 int main()
@@ -722,7 +658,7 @@ int main()
 		Asteroid::ProcessMerges(asteroids);
 		NeutralShip::UpdateAll(neutralShips, deltaTime, context, rng);
 		SatelliteOrbitSystem::UpdateOrbitSatellites(orbitSatellites, deltaTime, earthCenter, context);
-		UpdateEnemies(
+		EnemyAISystem::UpdateAll(
 			enemies,
 			bullets,
 			orbitSatellites,
