@@ -1,6 +1,5 @@
 #include <algorithm>
 #include <cmath>
-#include <limits>
 #include <optional>
 #include <random>
 #include <vector>
@@ -15,9 +14,11 @@
 #include "entities/Bullet.hpp"
 #include "entities/Earth.hpp"
 #include "entities/Satellite.hpp"
+#include "entities/EnemyShip.hpp"
 #include "entities/NeutralShip.hpp"
 #include "entities/PlayerShip.hpp"
 #include "entities/Ship.hpp"
+#include "systems/FiringRing.hpp"
 #include "systems/FiringSystem.hpp"
 #include "systems/SatelliteOrbitSystem.hpp"
 
@@ -29,195 +30,13 @@ using game::FiringSystem;
 using game::SatelliteOrbitSystem;
 using game::Earth;
 using game::Satellite;
+using game::EnemyShip;
 using game::NeutralShip;
 using game::PlayerShip;
-
-enum class EnemyBehavior
-{
-	AttackSatellites,
-	HuntPlayer,
-};
-
-struct EnemyShip
-{
-	sf::ConvexShape shape;
-	sf::Vector2f targetPosition;
-	int targetRingIndex = 0;
-	int targetPointIndex = 0;
-	float fireCooldown = 0.f;
-	EnemyBehavior behavior = EnemyBehavior::AttackSatellites;
-};
 
 namespace
 {
 using namespace game;
-
-float GetSatelliteOrbitRadius(const GameContext& context)
-{
-	return context.earthRadius + 24.f * context.scale;
-}
-
-float GetFiringRingRadius(const GameContext& context, int ringIndex)
-{
-	return GetSatelliteOrbitRadius(context)
-		+ (firingRingOffset + firingRingSpacing * static_cast<float>(ringIndex)) * context.scale;
-}
-
-sf::Vector2f GetFiringPointPosition(
-	sf::Vector2f earthCenter,
-	const GameContext& context,
-	int ringIndex,
-	int pointIndex)
-{
-	const float firingRadius = GetFiringRingRadius(context, ringIndex);
-	const float angleStep = 6.2831853f / static_cast<float>(firingPointCount);
-	const float ringAngleOffset = firingRing2AngleOffsetDegrees * 3.14159265f / 180.f
-		* static_cast<float>(ringIndex);
-	const float angle = angleStep * static_cast<float>(pointIndex) + ringAngleOffset;
-	return sf::Vector2f(
-		earthCenter.x + std::cos(angle) * firingRadius,
-		earthCenter.y + std::sin(angle) * firingRadius);
-}
-
-bool IsFiringSlotOccupied(int ringIndex, int pointIndex, const std::vector<EnemyShip>& enemies)
-{
-	for (const auto& enemy : enemies)
-	{
-		if (enemy.targetRingIndex == ringIndex && enemy.targetPointIndex == pointIndex)
-		{
-			return true;
-		}
-	}
-	return false;
-}
-
-bool HasFreeFiringSlotOnRing(int ringIndex, const std::vector<EnemyShip>& enemies)
-{
-	for (int pointIndex = 0; pointIndex < firingPointCount; ++pointIndex)
-	{
-		if (!IsFiringSlotOccupied(ringIndex, pointIndex, enemies))
-		{
-			return true;
-		}
-	}
-	return false;
-}
-
-struct FiringSlotAssignment
-{
-	int ringIndex = 0;
-	int pointIndex = 0;
-};
-
-FiringSlotAssignment FindNearestFiringSlot(
-	sf::Vector2f spawnPosition,
-	sf::Vector2f earthCenter,
-	const GameContext& context,
-	const std::vector<EnemyShip>& enemies)
-{
-	FiringSlotAssignment result;
-	int searchRingCount = firingRingCount;
-
-	for (int ringIndex = 0; ringIndex < firingRingCount; ++ringIndex)
-	{
-		if (HasFreeFiringSlotOnRing(ringIndex, enemies))
-		{
-			searchRingCount = ringIndex + 1;
-			break;
-		}
-	}
-
-	int bestFreeRing = -1;
-	int bestFreePoint = 0;
-	float bestFreeDistance = std::numeric_limits<float>::max();
-	int bestAnyRing = 0;
-	int bestAnyPoint = 0;
-	float bestAnyDistance = std::numeric_limits<float>::max();
-
-	for (int ringIndex = 0; ringIndex < searchRingCount; ++ringIndex)
-	{
-		for (int pointIndex = 0; pointIndex < firingPointCount; ++pointIndex)
-		{
-			const sf::Vector2f slotPosition = GetFiringPointPosition(earthCenter, context, ringIndex, pointIndex);
-			const sf::Vector2f delta = slotPosition - spawnPosition;
-			const float distance = delta.x * delta.x + delta.y * delta.y;
-
-			if (distance < bestAnyDistance)
-			{
-				bestAnyDistance = distance;
-				bestAnyRing = ringIndex;
-				bestAnyPoint = pointIndex;
-			}
-
-			if (!IsFiringSlotOccupied(ringIndex, pointIndex, enemies) && distance < bestFreeDistance)
-			{
-				bestFreeDistance = distance;
-				bestFreeRing = ringIndex;
-				bestFreePoint = pointIndex;
-			}
-		}
-	}
-
-	if (bestFreeRing >= 0)
-	{
-		result.ringIndex = bestFreeRing;
-		result.pointIndex = bestFreePoint;
-	}
-	else
-	{
-		result.ringIndex = bestAnyRing;
-		result.pointIndex = bestAnyPoint;
-	}
-
-	return result;
-}
-
-sf::Vector2f CreateSpawnPositionFromEdge(int edge, const GameContext& context, float spawnMargin, std::mt19937& rng)
-{
-	std::uniform_real_distribution<float> positionX(0.f, context.windowWidth);
-	std::uniform_real_distribution<float> positionY(0.f, context.windowHeight);
-
-	switch (edge)
-	{
-	case 0:
-		return sf::Vector2f(positionX(rng), -spawnMargin);
-	case 1:
-		return sf::Vector2f(context.windowWidth + spawnMargin, positionY(rng));
-	case 2:
-		return sf::Vector2f(positionX(rng), context.windowHeight + spawnMargin);
-	default:
-		return sf::Vector2f(-spawnMargin, positionY(rng));
-	}
-}
-
-void SpawnEnemiesFromAllSides(
-	std::vector<EnemyShip>& enemies,
-	const GameContext& context,
-	sf::Vector2f earthCenter,
-	std::mt19937& rng)
-{
-	const float spawnMargin = std::max(context.shipWidth, context.shipHeight) + 40.f * context.scale;
-
-	for (int enemyIndex = 0; enemyIndex < enemySpawnCount; ++enemyIndex)
-	{
-		const int edge = enemyIndex;
-		const sf::Vector2f spawnPosition = CreateSpawnPositionFromEdge(edge, context, spawnMargin, rng);
-
-		const FiringSlotAssignment slot = FindNearestFiringSlot(spawnPosition, earthCenter, context, enemies);
-
-		std::uniform_int_distribution<int> behaviorDist(0, 1);
-
-		EnemyShip enemy;
-		enemy.shape = Ship::CreateEnemyShip(context).GetShape();
-		enemy.shape.setPosition(spawnPosition);
-		enemy.targetRingIndex = slot.ringIndex;
-		enemy.targetPointIndex = slot.pointIndex;
-		enemy.targetPosition = GetFiringPointPosition(earthCenter, context, slot.ringIndex, slot.pointIndex);
-		enemy.behavior = behaviorDist(rng) == 0 ? EnemyBehavior::AttackSatellites : EnemyBehavior::HuntPlayer;
-		Ship::RotateToward(enemy.shape, spawnPosition, earthCenter);
-		enemies.push_back(enemy);
-	}
-}
 
 void ProcessBulletNeutralCollisions(
 	std::vector<Bullet>& bullets,
@@ -244,7 +63,7 @@ void ProcessBulletNeutralCollisions(
 			}
 
 			neutrals.erase(neutrals.begin() + static_cast<std::ptrdiff_t>(neutralIndex));
-			SpawnEnemiesFromAllSides(enemies, context, earthCenter, rng);
+			EnemyShip::SpawnFromAllSides(enemies, context, earthCenter, rng);
 			bulletHit = true;
 			break;
 		}
@@ -327,13 +146,13 @@ bool ProcessPlayerCollisions(
 
 	for (std::size_t enemyIndex = 0; enemyIndex < enemies.size();)
 	{
-		if (!IsShapeOnScreen(enemies[enemyIndex].shape, context))
+		if (!enemies[enemyIndex].IsOnScreen(context))
 		{
 			++enemyIndex;
 			continue;
 		}
 
-		if (!RectsIntersect(enemies[enemyIndex].shape.getGlobalBounds(), playerBounds))
+		if (!enemies[enemyIndex].IntersectsRect(playerBounds))
 		{
 			++enemyIndex;
 			continue;
@@ -421,12 +240,12 @@ void ProcessAsteroidEnemyCollisions(
 
 		for (std::size_t enemyIndex = 0; enemyIndex < enemies.size(); ++enemyIndex)
 		{
-			if (!IsShapeOnScreen(enemies[enemyIndex].shape, context))
+			if (!enemies[enemyIndex].IsOnScreen(context))
 			{
 				continue;
 			}
 
-			if (!asteroids[asteroidIndex].IntersectsRect(enemies[enemyIndex].shape.getGlobalBounds()))
+			if (!asteroids[asteroidIndex].IntersectsRect(enemies[enemyIndex].GetBounds()))
 			{
 				continue;
 			}
@@ -483,13 +302,13 @@ void ProcessEnemyNeutralCollisions(
 
 		for (std::size_t neutralIndex = 0; neutralIndex < neutrals.size(); ++neutralIndex)
 		{
-			if (!IsShapeOnScreen(enemies[enemyIndex].shape, context)
+			if (!enemies[enemyIndex].IsOnScreen(context)
 				|| !neutrals[neutralIndex].IsOnScreen(context))
 			{
 				continue;
 			}
 
-			if (!RectsIntersect(enemies[enemyIndex].shape.getGlobalBounds(), neutrals[neutralIndex].GetBounds()))
+			if (!enemies[enemyIndex].IntersectsRect(neutrals[neutralIndex].GetBounds()))
 			{
 				continue;
 			}
@@ -515,9 +334,9 @@ void ProcessEnemySatelliteCollisions(
 	for (std::size_t enemyIndex = 0; enemyIndex < enemies.size();)
 	{
 		bool enemyRemoved = false;
-		const sf::FloatRect enemyBounds = enemies[enemyIndex].shape.getGlobalBounds();
+		const sf::FloatRect enemyBounds = enemies[enemyIndex].GetBounds();
 
-		if (!IsShapeOnScreen(enemies[enemyIndex].shape, context))
+		if (!enemies[enemyIndex].IsOnScreen(context))
 		{
 			++enemyIndex;
 			continue;
@@ -551,15 +370,13 @@ void ProcessEnemyEnemyCollisions(std::vector<EnemyShip>& enemies, const GameCont
 
 		for (std::size_t secondIndex = firstIndex + 1; secondIndex < enemies.size(); ++secondIndex)
 		{
-			if (!IsShapeOnScreen(enemies[firstIndex].shape, context)
-				|| !IsShapeOnScreen(enemies[secondIndex].shape, context))
+			if (!enemies[firstIndex].IsOnScreen(context)
+				|| !enemies[secondIndex].IsOnScreen(context))
 			{
 				continue;
 			}
 
-			const sf::FloatRect firstBounds = enemies[firstIndex].shape.getGlobalBounds();
-			const sf::FloatRect secondBounds = enemies[secondIndex].shape.getGlobalBounds();
-			if (!RectsIntersect(firstBounds, secondBounds))
+			if (!RectsIntersect(enemies[firstIndex].GetBounds(), enemies[secondIndex].GetBounds()))
 			{
 				continue;
 			}
@@ -616,12 +433,12 @@ void ProcessBulletEnemyCollisions(
 
 		for (std::size_t enemyIndex = 0; enemyIndex < enemies.size(); ++enemyIndex)
 		{
-			if (!IsShapeOnScreen(enemies[enemyIndex].shape, context))
+			if (!enemies[enemyIndex].IsOnScreen(context))
 			{
 				continue;
 			}
 
-			if (!bullets[bulletIndex].IntersectsConvexShape(enemies[enemyIndex].shape))
+			if (!bullets[bulletIndex].IntersectsConvexShape(enemies[enemyIndex].GetShape()))
 			{
 				continue;
 			}
@@ -720,49 +537,6 @@ void ProcessBulletAsteroidCollisions(
 	}
 }
 
-void KeepInsideScreen(sf::Shape& shape, const GameContext& context, sf::Vector2f* velocity)
-{
-	sf::FloatRect bounds = shape.getGlobalBounds();
-
-	if (bounds.position.x < 0.f)
-	{
-		shape.move(sf::Vector2f(-bounds.position.x, 0.f));
-		if (velocity != nullptr)
-		{
-			velocity->x = std::abs(velocity->x);
-		}
-	}
-	else if (bounds.position.x + bounds.size.x > context.windowWidth)
-	{
-		const float offset = context.windowWidth - (bounds.position.x + bounds.size.x);
-		shape.move(sf::Vector2f(offset, 0.f));
-		if (velocity != nullptr)
-		{
-			velocity->x = -std::abs(velocity->x);
-		}
-	}
-
-	bounds = shape.getGlobalBounds();
-
-	if (bounds.position.y < 0.f)
-	{
-		shape.move(sf::Vector2f(0.f, -bounds.position.y));
-		if (velocity != nullptr)
-		{
-			velocity->y = std::abs(velocity->y);
-		}
-	}
-	else if (bounds.position.y + bounds.size.y > context.windowHeight)
-	{
-		const float offset = context.windowHeight - (bounds.position.y + bounds.size.y);
-		shape.move(sf::Vector2f(0.f, offset));
-		if (velocity != nullptr)
-		{
-			velocity->y = -std::abs(velocity->y);
-		}
-	}
-}
-
 void UpdateEnemies(
 	std::vector<EnemyShip>& enemies,
 	std::vector<Bullet>& bullets,
@@ -777,56 +551,56 @@ void UpdateEnemies(
 
 	for (auto& enemy : enemies)
 	{
-		const sf::Vector2f currentPosition = enemy.shape.getPosition();
+		const sf::Vector2f currentPosition = enemy.GetPosition();
 
-		if (enemy.behavior == EnemyBehavior::HuntPlayer)
+		if (enemy.GetBehavior() == EnemyBehavior::HuntPlayer)
 		{
 			sf::Vector2f toPlayer = playerPosition - currentPosition;
 			const float distance = std::sqrt(toPlayer.x * toPlayer.x + toPlayer.y * toPlayer.y);
 			if (distance > arrivalDistance)
 			{
 				toPlayer /= distance;
-				enemy.shape.move(toPlayer * moveSpeed * deltaTime);
-				KeepInsideScreen(enemy.shape, context, nullptr);
+				enemy.Move(toPlayer * moveSpeed * deltaTime);
+				enemy.ClampToScreen(context);
 			}
 
-			Ship::RotateToward(enemy.shape, enemy.shape.getPosition(), playerPosition);
+			enemy.RotateToward(playerPosition);
 
-			enemy.fireCooldown -= deltaTime;
-			if (enemy.fireCooldown <= 0.f)
+			enemy.TickFireCooldown(deltaTime);
+			if (enemy.GetFireCooldown() <= 0.f)
 			{
-				bullets.push_back(FiringSystem::CreateBulletFromShip(enemy.shape, context));
-				enemy.fireCooldown = enemyFireInterval;
+				bullets.push_back(FiringSystem::CreateBulletFromShip(enemy, context));
+				enemy.SetFireCooldown(enemyFireInterval);
 			}
 			continue;
 		}
 
-		sf::Vector2f toTarget = enemy.targetPosition - currentPosition;
+		sf::Vector2f toTarget = enemy.GetTargetPosition() - currentPosition;
 		const float distance = std::sqrt(toTarget.x * toTarget.x + toTarget.y * toTarget.y);
 
 		if (distance > arrivalDistance)
 		{
 			toTarget /= distance;
-			enemy.shape.move(toTarget * moveSpeed * deltaTime);
-			KeepInsideScreen(enemy.shape, context, nullptr);
-			Ship::RotateToward(enemy.shape, currentPosition, earthCenter);
+			enemy.Move(toTarget * moveSpeed * deltaTime);
+			enemy.ClampToScreen(context);
+			enemy.RotateTowardFromPosition(currentPosition, earthCenter);
 			continue;
 		}
 
 		const std::optional<sf::Vector2f> satelliteTarget = Satellite::FindNearestPosition(currentPosition, satellites);
 		if (!satelliteTarget.has_value())
 		{
-			Ship::RotateToward(enemy.shape, currentPosition, earthCenter);
+			enemy.RotateTowardFromPosition(currentPosition, earthCenter);
 			continue;
 		}
 
-		Ship::RotateToward(enemy.shape, currentPosition, *satelliteTarget);
+		enemy.RotateTowardFromPosition(currentPosition, *satelliteTarget);
 
-		enemy.fireCooldown -= deltaTime;
-		if (enemy.fireCooldown <= 0.f)
+		enemy.TickFireCooldown(deltaTime);
+		if (enemy.GetFireCooldown() <= 0.f)
 		{
-			bullets.push_back(FiringSystem::CreateBulletFromShip(enemy.shape, context));
-			enemy.fireCooldown = enemyFireInterval;
+			bullets.push_back(FiringSystem::CreateBulletFromShip(enemy, context));
+			enemy.SetFireCooldown(enemyFireInterval);
 		}
 	}
 }
@@ -997,7 +771,7 @@ int main()
 		}
 		for (const auto& enemy : enemies)
 		{
-			window.draw(enemy.shape);
+			enemy.Draw(window);
 		}
 		for (const auto& bullet : bullets)
 		{
