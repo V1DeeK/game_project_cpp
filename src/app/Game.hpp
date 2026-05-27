@@ -7,6 +7,7 @@
 #include <SFML/System/Clock.hpp>
 
 #include "app/GameContext.hpp"
+#include "app/RecordStore.hpp"
 #include "entities/Asteroid.hpp"
 #include "entities/Bullet.hpp"
 #include "entities/Earth.hpp"
@@ -14,8 +15,8 @@
 #include "entities/NeutralShip.hpp"
 #include "entities/PlayerShip.hpp"
 #include "entities/Satellite.hpp"
-#include "app/RecordStore.hpp"
 #include "input/PlayerInput.hpp"
+#include "ui/GameOverScreen.hpp"
 #include "ui/RecordDisplay.hpp"
 #include "ui/StartScreen.hpp"
 
@@ -32,9 +33,11 @@ private:
 	{
 		StartScreen,
 		Playing,
+		GameOver,
 	};
 
 	void ResetPlayingState();
+	void RenderWorld();
 
 	void ProcessEvents();
 	void Update(float deltaTime);
@@ -50,6 +53,7 @@ private:
 	RecordStore m_recordStore;
 	RecordDisplay m_recordDisplay;
 	StartScreen m_startScreen;
+	GameOverScreen m_gameOverScreen;
 
 	Earth m_earth;
 	sf::Vector2f m_earthCenter;

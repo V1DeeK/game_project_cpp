@@ -22,5 +22,17 @@ inline constexpr sf::Color kColorEarthFill(25, 90, 170);
 inline constexpr sf::Color kColorEarthOutline(45, 150, 70);
 inline constexpr sf::Color kColorAsteroidDamaged(200, 130, 70);
 inline constexpr sf::Color kColorBackgroundClear(10, 10, 25);
+
+// UI
+inline constexpr sf::Color kColorUiTextOutline(0, 0, 0, 160);
+inline constexpr sf::Color kColorUiButtonOutline(255, 255, 255, 70);
+
+inline constexpr sf::Color kColorUiStartButton(40, 120, 55);
+inline constexpr sf::Color kColorUiStartButtonHover(60, 150, 70);
+inline constexpr sf::Color kColorUiExitButton(140, 55, 55);
+inline constexpr sf::Color kColorUiExitButtonHover(170, 70, 70);
+
+inline constexpr sf::Color kColorUiGameOverPanelFill(25, 35, 70);
+inline constexpr sf::Color kColorUiGameOverPanelOutline(255, 255, 255, 90);
 } // namespace game
 

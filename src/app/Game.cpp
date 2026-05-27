@@ -18,6 +18,7 @@ Game::Game()
 	, m_window(sf::VideoMode::getDesktopMode(), "GAME", sf::State::Fullscreen)
 	, m_rng(std::random_device{}())
 	, m_startScreen(m_context, m_rng)
+	, m_gameOverScreen(m_context)
 	, m_earth(Earth::Create(m_context))
 	, m_orbitSatellites(SatelliteOrbitSystem::CreateOrbitSatellites(m_context))
 	, m_playerShip(PlayerShip::CreateAtCenter(m_context))
@@ -66,6 +67,22 @@ void Game::ProcessEvents()
 			continue;
 		}
 
+		if (m_mode == Mode::GameOver)
+		{
+			const GameOverAction action = m_gameOverScreen.ProcessEvent(m_window, *event);
+			if (action == GameOverAction::Exit)
+			{
+				m_window.close();
+			}
+			else if (action == GameOverAction::Restart)
+			{
+				ResetPlayingState();
+				m_recordStore.ResetCurrentRun();
+				m_mode = Mode::Playing;
+			}
+			continue;
+		}
+
 		if (m_playerInput.ProcessEvent(m_window, *event, m_playerShip, m_bullets, m_context))
 		{
 			m_window.close();
@@ -78,6 +95,11 @@ void Game::Update(float deltaTime)
 	if (m_mode == Mode::StartScreen)
 	{
 		m_startScreen.Update(deltaTime, m_context, m_rng);
+		return;
+	}
+
+	if (m_mode == Mode::GameOver)
+	{
 		return;
 	}
 
@@ -109,20 +131,13 @@ void Game::Update(float deltaTime)
 			m_rng))
 	{
 		m_recordStore.CommitCurrentRun();
-		m_window.close();
+		m_gameOverScreen.Show(m_recordStore.GetHighScore(), m_recordStore.GetCurrentScore());
+		m_mode = Mode::GameOver;
 	}
 }
 
-void Game::Render()
+void Game::RenderWorld()
 {
-	if (m_mode == Mode::StartScreen)
-	{
-		m_startScreen.Render(m_window, m_context);
-		m_recordDisplay.RenderRecord(m_window, m_context, m_recordStore.GetHighScore());
-		m_window.display();
-		return;
-	}
-
 	m_window.clear(kColorBackgroundClear);
 	m_earth.Draw(m_window);
 	for (const auto& satellite : m_orbitSatellites)
@@ -147,7 +162,29 @@ void Game::Render()
 		bullet.Draw(m_window);
 	}
 	m_playerShip.Draw(m_window);
-	m_recordDisplay.RenderScore(m_window, m_context, m_recordStore.GetCurrentScore());
+}
+
+void Game::Render()
+{
+	if (m_mode == Mode::StartScreen)
+	{
+		m_startScreen.Render(m_window, m_context);
+		m_recordDisplay.RenderRecord(m_window, m_context, m_recordStore.GetHighScore());
+		m_window.display();
+		return;
+	}
+
+	RenderWorld();
+
+	if (m_mode == Mode::Playing)
+	{
+		m_recordDisplay.RenderScore(m_window, m_context, m_recordStore.GetCurrentScore());
+	}
+	else if (m_mode == Mode::GameOver)
+	{
+		m_gameOverScreen.Render(m_window, m_context);
+	}
+
 	m_window.display();
 }
 

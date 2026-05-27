@@ -127,6 +127,24 @@ inline constexpr float startScreenButtonOffsetYExtra = 100.f;
 inline constexpr float startScreenButtonFontSizeBase = 22.f;
 inline constexpr int startScreenButtonCornerSegments = 8;
 
+// Rounded-rectangle helper (ConvexShape)
+inline constexpr int roundedRectangleCornerCount = 4;
+inline constexpr int roundedRectangleExtraPoints = 4;
+
+// UI / game over modal
+inline constexpr int gameOverOverlayAlpha = 160;
+inline constexpr float gameOverPanelWidthBase = 360.f;
+inline constexpr float gameOverPanelHeightBase = 260.f;
+inline constexpr float gameOverPanelCornerRadiusBase = 16.f;
+inline constexpr float gameOverScoreFontSizeBase = 26.f;
+inline constexpr float gameOverScoreLineSpacingBase = 36.f;
+inline constexpr float gameOverButtonWidthBase = 160.f;
+inline constexpr float gameOverButtonHeightBase = 44.f;
+inline constexpr float gameOverButtonCornerRadiusBase = 12.f;
+inline constexpr float gameOverButtonGapBase = 14.f;
+inline constexpr float gameOverButtonOffsetYBase = 40.f;
+inline constexpr float gameOverButtonFontSizeBase = 22.f;
+
 // UI / record
 inline constexpr float recordHudMarginX = 24.f;
 inline constexpr float recordHudMarginY = 20.f;
