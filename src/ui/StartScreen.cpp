@@ -2,10 +2,9 @@
 
 #include <cmath>
 #include <optional>
+#include <vector>
 
 #include <SFML/Graphics/Color.hpp>
-#include <SFML/Graphics/ConvexShape.hpp>
-#include <SFML/Graphics/VertexArray.hpp>
 #include <SFML/Window/Keyboard.hpp>
 #include <SFML/Window/Mouse.hpp>
 
@@ -21,39 +20,43 @@ sf::Vector2f GetMouseWorldPosition(const sf::RenderWindow& window)
 	return window.mapPixelToCoords(mousePixel);
 }
 
-bool IsMouseOver(const sf::RectangleShape& rect, sf::Vector2f point)
+bool IsMouseOver(const sf::Shape& shape, sf::Vector2f point)
 {
-	return rect.getGlobalBounds().contains(point);
+	return shape.getGlobalBounds().contains(point);
 }
 
-sf::ConvexShape CreatePlayIcon(float size)
+sf::ConvexShape CreateRoundedRectangle(sf::Vector2f size, float cornerRadius, int cornerSegments)
 {
-	sf::ConvexShape icon(3);
-	icon.setPoint(0, sf::Vector2f(-size * 0.35f, -size * 0.4f));
-	icon.setPoint(1, sf::Vector2f(-size * 0.35f, size * 0.4f));
-	icon.setPoint(2, sf::Vector2f(size * 0.45f, game::screenOrigin));
-	icon.setFillColor(sf::Color::White);
-	const sf::FloatRect bounds = icon.getLocalBounds();
-	icon.setOrigin(sf::Vector2f(
-		bounds.position.x + bounds.size.x * game::half,
-		bounds.position.y + bounds.size.y * game::half));
-	return icon;
-}
+	const float width = size.x;
+	const float height = size.y;
+	const float radius = std::min(cornerRadius, std::min(width, height) * game::half);
 
-sf::VertexArray CreateXIcon(float size)
-{
-	// 2 lines, 4 vertices, rendered as Lines.
-	sf::VertexArray icon(sf::PrimitiveType::Lines, 4);
-	const float r = size * 0.35f;
-	icon[0].position = sf::Vector2f(-r, -r);
-	icon[1].position = sf::Vector2f(r, r);
-	icon[2].position = sf::Vector2f(-r, r);
-	icon[3].position = sf::Vector2f(r, -r);
-	for (std::size_t i = 0; i < 4; ++i)
+	std::vector<sf::Vector2f> points;
+	points.reserve(static_cast<std::size_t>(cornerSegments) * 4 + 4);
+
+	const auto addArc = [&](float centerX, float centerY, float startAngle, float endAngle, bool skipFirstPoint) {
+		for (int segmentIndex = (skipFirstPoint ? 1 : 0); segmentIndex <= cornerSegments; ++segmentIndex)
+		{
+			const float angle = startAngle
+				+ (endAngle - startAngle) * static_cast<float>(segmentIndex) / static_cast<float>(cornerSegments);
+			points.emplace_back(
+				centerX + std::cos(angle) * radius,
+				centerY + std::sin(angle) * radius);
+		}
+	};
+
+	addArc(radius, radius, game::pi, game::pi + game::half * game::pi, false);
+	addArc(width - radius, radius, game::pi + game::half * game::pi, game::twoPi, true);
+	addArc(width - radius, height - radius, game::screenOrigin, game::half * game::pi, true);
+	addArc(radius, height - radius, game::half * game::pi, game::pi, true);
+
+	sf::ConvexShape shape(points.size());
+	for (std::size_t pointIndex = 0; pointIndex < points.size(); ++pointIndex)
 	{
-		icon[i].color = sf::Color::White;
+		shape.setPoint(static_cast<std::size_t>(pointIndex), points[pointIndex]);
 	}
-	return icon;
+
+	return shape;
 }
 } // namespace
 
@@ -65,6 +68,21 @@ StartScreen::StartScreen(const GameContext& context, std::mt19937& rng)
 	, m_satellites(SatelliteOrbitSystem::CreateOrbitSatellites(context))
 	, m_asteroids(Asteroid::CreateInitialFleet(context, rng))
 {
+	m_fontReady = LoadFont();
+	if (m_fontReady)
+	{
+		const unsigned int fontSize = static_cast<unsigned int>(startScreenButtonFontSizeBase * context.scale);
+		m_startLabel.emplace(m_font, "START", fontSize);
+		m_exitLabel.emplace(m_font, "EXIT", fontSize);
+
+		for (sf::Text* label : {&*m_startLabel, &*m_exitLabel})
+		{
+			label->setFillColor(sf::Color::White);
+			label->setOutlineColor(sf::Color(0, 0, 0, 160));
+			label->setOutlineThickness(defaultOutlineThickness);
+		}
+	}
+
 	UpdateLayout(context);
 }
 
@@ -128,8 +146,8 @@ void StartScreen::Render(sf::RenderWindow& window, const GameContext& context) c
 	const bool startHover = IsMouseOver(m_startButton, mouseWorld);
 	const bool exitHover = IsMouseOver(m_exitButton, mouseWorld);
 
-	sf::RectangleShape startBtn = m_startButton;
-	sf::RectangleShape exitBtn = m_exitButton;
+	sf::ConvexShape startBtn = m_startButton;
+	sf::ConvexShape exitBtn = m_exitButton;
 	startBtn.setFillColor(startHover ? sf::Color(60, 150, 70) : sf::Color(40, 120, 55));
 	exitBtn.setFillColor(exitHover ? sf::Color(170, 70, 70) : sf::Color(140, 55, 55));
 
@@ -147,40 +165,66 @@ void StartScreen::Render(sf::RenderWindow& window, const GameContext& context) c
 	window.draw(startBtn);
 	window.draw(exitBtn);
 
-	sf::ConvexShape playIcon = m_startIcon;
-	// Button position is already its center (origin is set in UpdateLayout).
-	playIcon.setPosition(startBtn.getPosition());
-	window.draw(playIcon);
-
-	sf::VertexArray xIcon = CreateXIcon(std::min(exitBtn.getSize().x, exitBtn.getSize().y));
-	const sf::Vector2f exitButtonCenter = exitBtn.getPosition();
-	for (std::size_t i = 0; i < xIcon.getVertexCount(); ++i)
+	if (m_fontReady && m_startLabel.has_value() && m_exitLabel.has_value())
 	{
-		xIcon[i].position += exitButtonCenter;
+		sf::Text startLabel = *m_startLabel;
+		sf::Text exitLabel = *m_exitLabel;
+		CenterLabelOnButton(startLabel, startBtn);
+		CenterLabelOnButton(exitLabel, exitBtn);
+		window.draw(startLabel);
+		window.draw(exitLabel);
 	}
-	window.draw(xIcon);
+}
+
+bool StartScreen::LoadFont()
+{
+	const char* fontPaths[] = {
+		"/System/Library/Fonts/Supplemental/Arial.ttf",
+		"/Library/Fonts/Arial.ttf",
+		"assets/fonts/Arial.ttf",
+	};
+
+	for (const char* path : fontPaths)
+	{
+		if (m_font.openFromFile(path))
+		{
+			return true;
+		}
+	}
+
+	return false;
 }
 
 void StartScreen::UpdateLayout(const GameContext& context)
 {
-	const float buttonWidth = 240.f * context.scale;
-	const float buttonHeight = 70.f * context.scale;
-	const float gap = 20.f * context.scale;
+	const float buttonWidth = startScreenButtonWidthBase * context.scale;
+	const float buttonHeight = startScreenButtonHeightBase * context.scale;
+	const float cornerRadius = startScreenButtonCornerRadiusBase * context.scale;
+	const float gap = startScreenButtonGapBase * context.scale;
 	const sf::Vector2f center(context.windowWidth * half, context.windowHeight * half);
 
-	m_startButton = sf::RectangleShape(sf::Vector2f(buttonWidth, buttonHeight));
+	const sf::Vector2f buttonSize(buttonWidth, buttonHeight);
+	m_startButton = CreateRoundedRectangle(buttonSize, cornerRadius, startScreenButtonCornerSegments);
 	m_startButton.setOrigin(sf::Vector2f(buttonWidth * half, buttonHeight * half));
-	m_startButton.setPosition(sf::Vector2f(center.x, center.y + 120.f * context.scale));
+	m_startButton.setPosition(sf::Vector2f(
+		center.x,
+		center.y + startScreenButtonOffsetYBase * context.scale + startScreenButtonOffsetYExtra));
 	m_startButton.setOutlineColor(sf::Color(255, 255, 255, 70));
 	m_startButton.setOutlineThickness(defaultOutlineThickness);
 
-	m_exitButton = sf::RectangleShape(sf::Vector2f(buttonWidth, buttonHeight));
+	m_exitButton = CreateRoundedRectangle(buttonSize, cornerRadius, startScreenButtonCornerSegments);
 	m_exitButton.setOrigin(sf::Vector2f(buttonWidth * half, buttonHeight * half));
 	m_exitButton.setPosition(sf::Vector2f(center.x, m_startButton.getPosition().y + buttonHeight + gap));
 	m_exitButton.setOutlineColor(sf::Color(255, 255, 255, 70));
 	m_exitButton.setOutlineThickness(defaultOutlineThickness);
+}
 
-	m_startIcon = CreatePlayIcon(std::min(buttonWidth, buttonHeight));
+void StartScreen::CenterLabelOnButton(sf::Text& label, const sf::Shape& button) const
+{
+	const sf::FloatRect bounds = label.getLocalBounds();
+	label.setOrigin(sf::Vector2f(
+		bounds.position.x + bounds.size.x * half,
+		bounds.position.y + bounds.size.y * half));
+	label.setPosition(button.getPosition());
 }
 } // namespace game
-

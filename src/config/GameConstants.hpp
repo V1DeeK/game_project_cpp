@@ -117,7 +117,17 @@ inline constexpr float bulletLengthBase = 5.f;
 inline constexpr float bulletMuzzleOffsetFactor = 0.6f;
 inline constexpr float bulletOffScreenMargin = 40.f;
 
-// UI / record 
+// UI / start screen
+inline constexpr float startScreenButtonWidthBase = 160.f;
+inline constexpr float startScreenButtonHeightBase = 44.f;
+inline constexpr float startScreenButtonCornerRadiusBase = 12.f;
+inline constexpr float startScreenButtonGapBase = 14.f;
+inline constexpr float startScreenButtonOffsetYBase = 120.f;
+inline constexpr float startScreenButtonOffsetYExtra = 100.f;
+inline constexpr float startScreenButtonFontSizeBase = 22.f;
+inline constexpr int startScreenButtonCornerSegments = 8;
+
+// UI / record
 inline constexpr float recordHudMarginX = 24.f;
 inline constexpr float recordHudMarginY = 20.f;
 inline constexpr float recordHudOffsetLeft = 100.f;
