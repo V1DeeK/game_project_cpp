@@ -14,7 +14,9 @@
 #include "entities/NeutralShip.hpp"
 #include "entities/PlayerShip.hpp"
 #include "entities/Satellite.hpp"
+#include "app/RecordStore.hpp"
 #include "input/PlayerInput.hpp"
+#include "ui/RecordDisplay.hpp"
 #include "ui/StartScreen.hpp"
 
 namespace game
@@ -45,6 +47,8 @@ private:
 	Mode m_mode = Mode::StartScreen;
 
 	std::mt19937 m_rng;
+	RecordStore m_recordStore;
+	RecordDisplay m_recordDisplay;
 	StartScreen m_startScreen;
 
 	Earth m_earth;

@@ -60,6 +60,7 @@ void Game::ProcessEvents()
 			else if (action == StartScreenAction::StartGame)
 			{
 				ResetPlayingState();
+				m_recordStore.ResetCurrentRun();
 				m_mode = Mode::Playing;
 			}
 			continue;
@@ -81,6 +82,7 @@ void Game::Update(float deltaTime)
 	}
 
 	m_playerInput.UpdatePlayer(m_playerShip, m_window, deltaTime, m_context);
+	m_recordStore.Update(deltaTime);
 
 	Asteroid::UpdateAll(m_asteroids, deltaTime, m_context, m_rng);
 	Asteroid::ProcessMerges(m_asteroids);
@@ -106,6 +108,7 @@ void Game::Update(float deltaTime)
 			m_earthCenter,
 			m_rng))
 	{
+		m_recordStore.CommitCurrentRun();
 		m_window.close();
 	}
 }
@@ -115,6 +118,8 @@ void Game::Render()
 	if (m_mode == Mode::StartScreen)
 	{
 		m_startScreen.Render(m_window, m_context);
+		m_recordDisplay.RenderRecord(m_window, m_context, m_recordStore.GetHighScore());
+		m_window.display();
 		return;
 	}
 
@@ -142,6 +147,7 @@ void Game::Render()
 		bullet.Draw(m_window);
 	}
 	m_playerShip.Draw(m_window);
+	m_recordDisplay.RenderScore(m_window, m_context, m_recordStore.GetCurrentScore());
 	m_window.display();
 }
 

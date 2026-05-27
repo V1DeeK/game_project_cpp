@@ -159,8 +159,6 @@ void StartScreen::Render(sf::RenderWindow& window, const GameContext& context) c
 		xIcon[i].position += exitButtonCenter;
 	}
 	window.draw(xIcon);
-
-	window.display();
 }
 
 void StartScreen::UpdateLayout(const GameContext& context)

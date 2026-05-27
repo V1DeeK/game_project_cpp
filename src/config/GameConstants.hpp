@@ -116,4 +116,11 @@ inline constexpr float bulletWidthBase = 2.f;
 inline constexpr float bulletLengthBase = 5.f;
 inline constexpr float bulletMuzzleOffsetFactor = 0.6f;
 inline constexpr float bulletOffScreenMargin = 40.f;
+
+// UI / record 
+inline constexpr float recordHudMarginX = 24.f;
+inline constexpr float recordHudMarginY = 20.f;
+inline constexpr float recordHudOffsetLeft = 100.f;
+inline constexpr float recordHudFontSizeBase = 28.f;
+inline constexpr char recordFileName[] = "record.txt";
 } // namespace game
